@@ -1,18 +1,26 @@
 // components/ResumeLibrary.js
 import { useState, Fragment } from 'react'; // Fragment 用于包裹多个元素
-import BatchImportModal from './BatchimportModal'; // 批量导入功能
+import BatchImportModal from './BatchimportModal'; // 批量导入功能 (确保文件名大小写正确)
 import ResumeDetailModal from './ResumeDetailModal'; // 我们将创建这个组件用于显示详情
 
 // 简单的日期格式化函数 (可以替换为更强大的库如 date-fns)
-function formatDate(dateString) 
-    if (!dateString) return 'N/A';
+function formatDate(dateString) { // <--- 添加了缺失的 {
+    if (!dateString) {          // <--- 为 if 语句添加了 { }
+        return 'N/A';
+    }
     try {
         const date = new Date(dateString);
+        // 检查日期是否有效
+        if (isNaN(date.getTime())) {
+             console.warn(`[formatDate] Received invalid date string: ${dateString}`);
+             return '日期无效'; // 或者返回原始字符串，或 'N/A'
+        }
         return date.toLocaleDateString('zh-CN'); // 格式如 2025/4/22
     } catch (e) {
+        console.error(`[formatDate] Error formatting date string "${dateString}":`, e);
         return dateString; // 格式化失败则返回原始字符串
     }
-}
+} // <--- 函数的结尾 }
 
 // 技能/工具标签组件
 const SkillTag = ({ children }) => (
@@ -45,26 +53,36 @@ export default function ResumeLibrary({ activeTab, resumes, isLoading, error, da
 
   // --- 新增：处理删除 (需要后端 API 支持) ---
   const handleDeleteResume = async (resume) => {
-     if (window.confirm(`确定要删除 ${resume.name || '该'} 的简历吗？这个操作无法撤销。`)) {
+     // 基本的 ID 检查
+     if (!resume || !resume.id) {
+         console.error("尝试删除无效的简历对象:", resume);
+         alert("无法删除：无效的简历信息。");
+         return;
+     }
+
+     if (window.confirm(`确定要删除 ${resume.name || `ID: ${resume.id}`} 的简历吗？这个操作无法撤销。`)) {
          console.log('尝试删除简历:', resume.id);
-         alert(`删除功能需要后端 API 支持。\n即将删除 ID: ${resume.id}`);
-         // try {
-         //   const response = await fetch(`/api/deleteResume?id=${resume.id}`, { method: 'DELETE' });
-         //   if (!response.ok) {
-         //     const errorData = await response.json();
-         //     throw new Error(errorData.message || '删除失败');
-         //   }
-         //   alert('删除成功！');
-         //   refreshResumes(); // 刷新列表
-         // } catch (err) {
-         //   console.error("删除简历失败:", err);
-         //   alert(`删除失败: ${err.message}`);
-         // }
+         alert(`注意：删除功能目前需要后端 API 支持。\n即将模拟删除 ID: ${resume.id}`);
+         // 实际开发中取消下面的注释并确保 API 端点存在
+         /*
+         try {
+           const response = await fetch(`/api/deleteResume?id=${resume.id}`, { method: 'DELETE' });
+           if (!response.ok) {
+             const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' })); // 尝试解析 JSON，失败则给默认消息
+             throw new Error(errorData.message || `删除失败 (状态 ${response.status})`);
+           }
+           alert('删除成功！');
+           refreshResumes(); // 刷新列表
+         } catch (err) {
+           console.error("删除简历失败:", err);
+           alert(`删除失败: ${err.message}`);
+         }
+         */
      }
   };
    // --- 删除处理结束 ---
 
-  // 如果当前 Tab 不是简历库，不渲染任何东西 (虽然父组件已经判断，但这里再确认一次)
+  // 如果当前 Tab 不是简历库，不渲染任何东西
   if (activeTab !== 'resumes') {
     return null;
   }
@@ -140,7 +158,7 @@ export default function ResumeLibrary({ activeTab, resumes, isLoading, error, da
             <tbody className="bg-white divide-y divide-gray-200">
               {resumes && resumes.length > 0 ? (
                 resumes.map((resume) => (
-                  <tr key={resume.id} className="hover:bg-gray-50 transition-colors duration-150">
+                  <tr key={resume?.id || JSON.stringify(resume)} className="hover:bg-gray-50 transition-colors duration-150"> {/* 添加 key 的健壮性 */}
                     {/* --- 更新表格数据列 --- */}
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm font-medium text-gray-900">{resume.name || 'N/A'}</div>
@@ -149,26 +167,28 @@ export default function ResumeLibrary({ activeTab, resumes, isLoading, error, da
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{resume.title || 'N/A'}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {resume.totalYearsExperience !== null ? `${resume.totalYearsExperience} 年` : '未知'}
+                      {resume.totalYearsExperience !== null && typeof resume.totalYearsExperience === 'number'
+                        ? `${resume.totalYearsExperience} 年`
+                        : (resume.totalYearsExperience || '未知') /* 处理非数字或 null/undefined */}
                     </td>
                     <td className="px-6 py-4">
                        {/* 使用 SkillTag 组件展示前 3 个核心技能 */}
                        <div className="flex flex-wrap">
-                         {resume.coreSkills?.slice(0, 3).map((skill, i) => <SkillTag key={i}>{skill}</SkillTag>)}
-                         {resume.coreSkills && resume.coreSkills.length > 3 && (
+                         {Array.isArray(resume.coreSkills) && resume.coreSkills.slice(0, 3).map((skill, i) => <SkillTag key={i}>{skill}</SkillTag>)}
+                         {Array.isArray(resume.coreSkills) && resume.coreSkills.length > 3 && (
                            <span className="text-xs text-gray-400 self-center ml-1">+{resume.coreSkills.length - 3}</span>
                          )}
-                         {(!resume.coreSkills || resume.coreSkills.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
+                         {(!Array.isArray(resume.coreSkills) || resume.coreSkills.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
                        </div>
                     </td>
                     {/*
                     <td className="px-6 py-4">
                        <div className="flex flex-wrap">
-                         {resume.tools?.slice(0, 3).map((tool, i) => <SkillTag key={i}>{tool}</SkillTag>)}
-                         {resume.tools && resume.tools.length > 3 && (
+                         {Array.isArray(resume.tools) && resume.tools.slice(0, 3).map((tool, i) => <SkillTag key={i}>{tool}</SkillTag>)}
+                         {Array.isArray(resume.tools) && resume.tools.length > 3 && (
                             <span className="text-xs text-gray-400 self-center ml-1">+{resume.tools.length - 3}</span>
                          )}
-                         {(!resume.tools || resume.tools.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
+                         {(!Array.isArray(resume.tools) || resume.tools.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
                        </div>
                     </td>
                      */}
@@ -194,7 +214,7 @@ export default function ResumeLibrary({ activeTab, resumes, isLoading, error, da
               ) : (
                 // 空状态显示
                 <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center">
+                  <td colSpan={7} className="px-6 py-10 text-center"> {/* Adjusted colSpan */}
                      <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                          <path vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
                      </svg>
