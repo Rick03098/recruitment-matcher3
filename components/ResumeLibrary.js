@@ -1,10 +1,10 @@
 // components/ResumeLibrary.js
 import { useState, Fragment } from 'react'; // Fragment 用于包裹多个元素
-import BatchImportModal from './BatchImportModal'; // 批量导入功能
+import BatchImportModal from './BatchimportModal'; // 批量导入功能
 import ResumeDetailModal from './ResumeDetailModal'; // 我们将创建这个组件用于显示详情
 
 // 简单的日期格式化函数 (可以替换为更强大的库如 date-fns)
-function formatDate(dateString) {
+function formatDate(dateString) 
     if (!dateString) return 'N/A';
     try {
         const date = new Date(dateString);
