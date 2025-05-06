@@ -106,10 +106,23 @@ export default function RecruitmentMatcher() {
         setError('职位描述文件大小不能超过 10MB');
         setJobFile(null); e.target.value = ''; return;
      }
-     if (!['application/pdf', 'text/plain', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'].includes(file.type)) {
-         setError('职位描述文件仅支持 PDF, TXT, DOC, DOCX');
-         setJobFile(null); e.target.value = ''; return;
-     }
+     // 原来的检查:
+// if (!['application/pdf', 'text/plain', ...].includes(file.type)) { ... }
+
+// 修改后的检查 (示例):
+const allowedTypes = [
+  'application/pdf', 
+  'text/plain', 
+  'application/msword', 
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/png', 
+  'image/jpeg', 
+  'image/webp' 
+];
+if (!allowedTypes.includes(file.type)) {
+  setError('文件仅支持 PDF, TXT, DOC, DOCX, PNG, JPG, WEBP');
+  setJobFile(null); e.target.value = ''; return;
+}
 
      setJobFile(file);
      setIsUploadingJD(true); // 开始处理（这里只是前端状态，实际解析可能需要 API）
@@ -339,7 +352,14 @@ export default function RecruitmentMatcher() {
                    </div>
                    {!jobFile ? (
                      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-indigo-400 transition-colors duration-150">
-                        <input type="file" id="job-file" accept=".pdf,.txt,.doc,.docx" onChange={handleJobFileChange} className="hidden" disabled={isUploadingJD} />
+                        <input 
+  type="file" 
+  id="job-file" 
+  accept=".pdf,.txt,.doc,.docx,image/png,image/jpeg,image/webp" // <-- 添加图片类型
+  onChange={handleJobFileChange} 
+  className="hidden" 
+  disabled={isUploadingJD} 
+/>
                         <label htmlFor="job-file" className={`cursor-pointer ${isUploadingJD ? 'cursor-not-allowed' : ''}`}>
                           <svg className="mx-auto h-10 w-10 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true"><path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"></path></svg>
                           <p className="mt-1 text-sm text-gray-600">
