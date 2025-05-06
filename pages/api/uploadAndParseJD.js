@@ -63,33 +63,60 @@ export default async function handler(req, res) {
   // --- 2. Parse Form Data with Formidable ---
   const form = formidable(formidableOptions);
 
+  // Declare variables outside the try block if needed in catch/finally for cleanup
+  let tempFilePath = null;
+
   try {
-    const [fields, files] = await form.parse(req); // Use promise-based parsing
+    // --- 2a. Parse Form Data and Add Debug Logging ---
+    console.log('[API /uploadAndParseJD] Attempting form.parse...');
+    const parseResult = await form.parse(req);
+    // DEBUGGING: Log the raw result from form.parse
+    console.log('[API /uploadAndParseJD] form.parse resolved with:', parseResult);
+    console.log('[API /uploadAndParseJD] Type of parseResult:', typeof parseResult);
+    console.log('[API /uploadAndParseJD] Is parseResult an array?', Array.isArray(parseResult));
+    // --- Debug Logging End ---
+
+    // --- 2b. Add Check for Expected Structure ---
+    if (!Array.isArray(parseResult) || parseResult.length < 2) {
+         console.error('[API /uploadAndParseJD] Error: form.parse did not return the expected [fields, files] array structure.');
+         // Log the problematic value for more insight
+         console.error('[API /uploadAndParseJD] Actual parseResult:', parseResult);
+         throw new Error('Internal server error: Unexpected form parsing result.'); // Throw error to be caught below
+    }
+    // --- Check End ---
+
+    // --- 2c. Safely Destructure ---
+    const [fields, files] = parseResult;
+    console.log('[API /uploadAndParseJD] Successfully destructured fields and files.');
+    // --- Destructuring End ---
+
 
     // --- 3. Get Uploaded File ---
     const uploadedFile = files.jobFile?.[0]; // Assuming frontend sends file with key 'jobFile'
 
     if (!uploadedFile) {
       console.error("[API /uploadAndParseJD] No file found in the request (expected key 'jobFile'). Files object:", files);
-      return res.status(400).json({ success: false, message: "No image file uploaded or incorrect field name used." });
+      // Attempt to log field names if file is missing
+      console.error("[API /uploadAndParseJD] Received fields:", fields);
+      return res.status(400).json({ success: false, message: "No image file uploaded or incorrect field name used ('jobFile' expected)." });
     }
 
-    const filePath = uploadedFile.filepath; // Path to the temporary uploaded file
+    // Store the temp path for potential cleanup in catch/finally
+    tempFilePath = uploadedFile.filepath;
     const originalFilename = uploadedFile.originalFilename;
     const mimeType = uploadedFile.mimetype;
-    console.log(`[API /uploadAndParseJD] File received: ${originalFilename} (${mimeType}), Temp path: ${filePath}`);
+    console.log(`[API /uploadAndParseJD] File received: ${originalFilename} (${mimeType}), Temp path: ${tempFilePath}`);
 
     // --- 4. Read File and Convert to Base64 ---
     let base64Image;
     try {
-      const imageBuffer = await fs.readFile(filePath);
+      const imageBuffer = await fs.readFile(tempFilePath);
       base64Image = imageBuffer.toString('base64');
       console.log(`[API /uploadAndParseJD] Image file read and converted to Base64 (length: ${base64Image.length})`);
     } catch (readError) {
-        console.error(`[API /uploadAndParseJD] Error reading file ${filePath}:`, readError);
-        // Clean up the temporary file if reading fails
-        await fs.unlink(filePath).catch(unlinkErr => console.error(`Error cleaning up temp file ${filePath}:`, unlinkErr));
-        return res.status(500).json({ success: false, message: 'Error reading uploaded image file.' });
+        console.error(`[API /uploadAndParseJD] Error reading file ${tempFilePath}:`, readError);
+        // No need to manually cleanup here, the main catch block's finally will handle it
+        throw new Error('Error reading uploaded image file.'); // Re-throw to be caught by main catch
     }
 
     // --- 5. Call OpenAI GPT-4o ---
@@ -128,65 +155,94 @@ export default async function handler(req, res) {
 
       const messageContent = response.choices[0]?.message?.content;
       console.log('[API /uploadAndParseJD] OpenAI response received.');
-      // console.log('Raw OpenAI response content:', messageContent); // For debugging
 
       if (!messageContent) {
-        throw new Error("OpenAI returned an empty response.");
+        // Treat empty response as an error
+        console.error("[API /uploadAndParseJD] OpenAI returned an empty response content.");
+        throw new Error("OpenAI analysis returned no content.");
       }
 
       // Attempt to parse as JSON first, otherwise treat as plain text
       try {
-          // Check if the response looks like JSON (simple check)
           if (messageContent.trim().startsWith('{') && messageContent.trim().endsWith('}')) {
               structuredData = JSON.parse(messageContent);
-              // Optionally extract text from the structured data if needed elsewhere
-              // For now, prioritize the structured data if available
-              extractedText = `Job Title: ${structuredData.jobTitle || 'N/A'}\nRequired Skills: ${(structuredData.requiredSkills || []).join(', ')}\n... (extracted from JSON)`;
+              extractedText = `Job Title: ${structuredData.jobTitle || 'N/A'}\nRequired Skills: ${(structuredData.requiredSkills || []).join(', ')}\n... (extracted from JSON)`; // Create a summary text
               console.log('[API /uploadAndParseJD] Parsed structured JSON data from OpenAI.');
           } else {
               extractedText = messageContent;
               console.log('[API /uploadAndParseJD] Received plain text from OpenAI.');
           }
       } catch (parseError) {
-          console.warn('[API /uploadAndParseJD] OpenAI response was not valid JSON, treating as plain text.');
-          extractedText = messageContent;
+          console.warn('[API /uploadAndParseJD] OpenAI response was not valid JSON, treating as plain text. Error:', parseError.message);
+          // Log the content that failed to parse
+          console.warn('[API /uploadAndParseJD] Content that failed JSON parsing:', messageContent);
+          extractedText = messageContent; // Keep the raw text
+          structuredData = null; // Ensure structuredData is null
       }
 
     } catch (openaiError) {
       console.error("[API /uploadAndParseJD] Error calling OpenAI API:", openaiError);
-       // Clean up the temporary file on OpenAI error
-       await fs.unlink(filePath).catch(unlinkErr => console.error(`Error cleaning up temp file ${filePath}:`, unlinkErr));
-      // Handle specific OpenAI errors if needed (e.g., billing, rate limits)
-      return res.status(500).json({ success: false, message: `Failed to analyze image with OpenAI: ${openaiError.message}` });
+       // Re-throw to be caught by the main catch block (which handles cleanup)
+      throw new Error(`Failed to analyze image with OpenAI: ${openaiError.message}`);
     }
 
-    // --- 6. Clean Up Temporary File ---
-    try {
-        await fs.unlink(filePath);
-        console.log(`[API /uploadAndParseJD] Temporary file ${filePath} deleted successfully.`);
-    } catch (unlinkError) {
-        // Log the error but don't fail the request just because cleanup failed
-        console.warn(`[API /uploadAndParseJD] Warning: Failed to delete temporary file ${filePath}:`, unlinkError.message);
-    }
+    // --- 6. Clean Up Temporary File (Moved to finally block below) ---
+    // We will attempt cleanup regardless of success after OpenAI call
 
     // --- 7. Return Result ---
     console.log('[API /uploadAndParseJD] Processing successful. Returning result.');
+    // Attempt cleanup before sending success response
+    if (tempFilePath) {
+        await fs.unlink(tempFilePath).then(() => {
+            console.log(`[API /uploadAndParseJD] Temporary file ${tempFilePath} deleted successfully.`);
+            tempFilePath = null; // Mark as deleted
+        }).catch(unlinkError => {
+            console.warn(`[API /uploadAndParseJD] Warning: Failed to delete temporary file ${tempFilePath}:`, unlinkError.message);
+            // Continue without failing the request
+        });
+    }
     return res.status(200).json({
       success: true,
       message: "Job description image processed successfully.",
-      extractedText: extractedText, // The full text extracted or derived
-      structuredData: structuredData, // The parsed JSON object (or null)
+      extractedText: extractedText,
+      structuredData: structuredData,
       fileName: originalFilename,
     });
 
   } catch (error) {
-    // Catch errors from formidable parsing or other synchronous issues
-    console.error('[API /uploadAndParseJD] Error processing form data:', error);
+    // --- Catch Block for All Errors (including form parse, file read, OpenAI, etc.) ---
+    console.error('[API /uploadAndParseJD] Overall error handler caught an error:', error);
+
+    let statusCode = 500;
+    let message = `Server error processing upload: ${error.message}`;
+
+    // Customize response based on known error codes from formidable
     if (error.code === 'LIMIT_FILE_SIZE') {
-       return res.status(413).json({ success: false, message: `Image file size exceeds limit (${formidableOptions.maxFileSize / 1024 / 1024}MB).` });
+       statusCode = 413; // Payload Too Large
+       message = `Image file size exceeds limit (${formidableOptions.maxFileSize / 1024 / 1024}MB).`;
     } else if (error.code === 'LIMIT_UNEXPECTED_FILE') {
-        return res.status(400).json({ success: false, message: "Invalid file type. Only images are allowed." });
+        statusCode = 400; // Bad Request
+        message = "Invalid file type. Only images are allowed.";
+    } else if (message.includes("form.parse did not return")) {
+        // Keep the specific message for the structure error
+        statusCode = 500;
     }
-    return res.status(500).json({ success: false, message: `Server error processing upload: ${error.message}` });
+    // Add more specific error handling if needed
+
+    // --- Ensure Cleanup Attempt in Case of Error ---
+    if (tempFilePath) {
+        console.log(`[API /uploadAndParseJD] Attempting cleanup of temp file due to error: ${tempFilePath}`);
+        await fs.unlink(tempFilePath).then(() => {
+             console.log(`[API /uploadAndParseJD] Temp file ${tempFilePath} deleted successfully after error.`);
+        }).catch(unlinkErr => {
+            console.error(`[API /uploadAndParseJD] Error cleaning up temp file ${tempFilePath} after error:`, unlinkErr.message);
+        });
+    }
+
+    return res.status(statusCode).json({
+      success: false,
+      message: message // Use the determined message
+    });
+    // --- Error Handling End ---
   }
 }
