@@ -61,17 +61,13 @@ export default async function handler(req, res) {
     let files = {};
     let tempFilePath = null; // For cleanup
 
-    // Listener for fields
     form.on('field', (fieldName, value) => {
         console.log(`[API /uploadAndParseJD] Received field: ${fieldName}`);
-        // Handle fields if necessary, e.g., accumulate if multiple fields with same name allowed
         fields[fieldName] = value;
     });
 
-    // Listener for files
     form.on('file', (fieldName, file) => {
         console.log(`[API /uploadAndParseJD] Received file: ${fieldName}, Original Name: ${file.originalFilename}, Temp Path: ${file.filepath}`);
-        // Store file info, assuming only one file named 'jobFile'
         if (fieldName === 'jobFile') {
             if (!files[fieldName]) {
                  files[fieldName] = [];
@@ -80,22 +76,18 @@ export default async function handler(req, res) {
             tempFilePath = file.filepath; // Keep track for cleanup
         } else {
              console.warn(`[API /uploadAndParseJD] Received unexpected file field: ${fieldName}`);
-             // Optionally delete unexpected files immediately
              fs.unlink(file.filepath).catch(err => console.error(`Error removing unexpected file ${file.filepath}:`, err));
         }
     });
 
-    // Listener for errors during parsing
     form.on('error', (err) => {
         console.error('[API /uploadAndParseJD] Formidable parsing error:', err);
-        // Ensure cleanup happens even if parsing fails mid-way
         if (tempFilePath) {
              fs.unlink(tempFilePath).catch(unlinkErr => console.error(`Error cleaning up temp file ${tempFilePath} after formidable error:`, unlinkErr));
         }
-        reject({ statusCode: 500, message: `Error parsing form data: ${err.message}`, internalError: err }); // Reject the promise
+        reject({ statusCode: 500, message: `Error parsing form data: ${err.message}`, internalError: err });
     });
 
-    // Listener for when parsing is complete
     form.on('end', async () => {
         console.log('[API /uploadAndParseJD] Formidable parsing ended.');
         try {
@@ -103,7 +95,6 @@ export default async function handler(req, res) {
 
             if (!uploadedFile) {
                 console.error("[API /uploadAndParseJD] No file found with field name 'jobFile'. Files received:", files);
-                // Reject the promise if the expected file is missing
                 return reject({ statusCode: 400, message: "No image file uploaded or incorrect field name used ('jobFile' expected)." });
             }
 
@@ -118,7 +109,6 @@ export default async function handler(req, res) {
                 console.log(`[API /uploadAndParseJD] Image file read and converted to Base64.`);
             } catch (readError) {
                 console.error(`[API /uploadAndParseJD] Error reading file ${tempFilePath}:`, readError);
-                // Propagate error for cleanup and rejection
                 throw new Error('Error reading uploaded image file.');
             }
 
@@ -126,57 +116,70 @@ export default async function handler(req, res) {
             let structuredData = null;
 
             try {
-                console.log('[API /uploadAndParseJD] Sending image to OpenAI...');
+                console.log('[API /uploadAndParseJD] Sending image to OpenAI with improved prompt...');
                 const response = await openai.chat.completions.create({
-                    model: "gpt-4o-mini", // Or gpt-4o
-                    messages: [ /* ... (Keep the same messages array as before) ... */
+                    model: "gpt-4o-mini", // Or "gpt-4o"
+                    messages: [
                      {
                        role: "user",
                        content: [
                          {
                            type: "text",
-                           text: `Analyze the following job description image. Extract the full text accurately. Then, based on the extracted text, provide a JSON object containing the key requirements. The JSON object should have keys: "jobTitle" (string), "requiredSkills" (array of strings), "preferredSkills" (array of strings), "yearsExperience" (string, e.g., "3-5 years", "5+", or null), "educationLevel" (string, e.g., "Bachelor's", "Master's", or null). If you cannot extract the JSON reliably, just provide the full extracted text. Focus ONLY on the content from the image. Respond with ONLY the extracted text OR the JSON object.`,
+                           // ----- IMPROVED PROMPT -----
+                           text: `Analyze the following job description image. Extract the full text accurately. Then, based on the extracted text, provide a JSON object containing the key requirements. The JSON object MUST have these exact keys:
+- "jobTitle": string (The specific job position being advertised, like "Software Engineer" or "Product Manager". If no specific position is clearly mentioned for these requirements, return null. Do not extract recruitment slogans like "招贤纳仕" or similar as the job title.)
+- "requiredSkills": array of strings (Extract ALL items listed explicitly under a heading like '技能要求', '任职要求', 'Requirements', etc. Ensure every numbered or listed item in that specific section is included in the array, trying to keep original wording.)
+- "preferredSkills": array of strings (List any skills explicitly mentioned as preferred, optional, '加分项' or 'nice to have'. If none, return an empty array.)
+- "yearsExperience": string (Extract required years of experience, e.g., "3-5 years", "5+", or null if not mentioned.)
+- "educationLevel": string (Extract minimum education level required, e.g., "Bachelor's", "Master's", "本科", "硕士", or null if not mentioned.)
+
+If you cannot reliably extract the JSON structure, respond with ONLY the full extracted text from the image. Otherwise, respond ONLY with the valid JSON object. Focus ONLY on the content derived from the image.`,
+                           // ----- END IMPROVED PROMPT -----
                          },
                          {
                            type: "image_url",
                            image_url: {
                              "url": `data:${mimeType};base64,${base64Image}`,
-                             "detail": "high"
+                             "detail": "high" // Use "high" detail for better OCR on text-heavy images
                            },
                          },
                        ],
                      },
                     ],
-                    max_tokens: 2000,
-                    temperature: 0.2,
+                    max_tokens: 2000, // Might need adjustment based on JD length
+                    temperature: 0.1, // Keep low temperature for accuracy
                 });
 
                 const messageContent = response.choices[0]?.message?.content;
                 console.log('[API /uploadAndParseJD] OpenAI response received.');
+                // console.log('[API /uploadAndParseJD] Raw OpenAI response content:', messageContent); // Uncomment for deep debugging
 
                 if (!messageContent) {
                     throw new Error("OpenAI analysis returned no content.");
                 }
 
+                // Attempt to parse as JSON first, otherwise treat as plain text
                 try {
-                   if (messageContent.trim().startsWith('{') && messageContent.trim().endsWith('}')) {
-                       structuredData = JSON.parse(messageContent);
+                   // Trim whitespace and check if it looks like a JSON object
+                   const trimmedContent = messageContent.trim();
+                   if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+                       structuredData = JSON.parse(trimmedContent);
+                       // Generate a summary text fallback from structured data
                        extractedText = `Job Title: ${structuredData.jobTitle || 'N/A'}\nRequired Skills: ${(structuredData.requiredSkills || []).join(', ')}\n... (extracted from JSON)`;
                        console.log('[API /uploadAndParseJD] Parsed structured JSON data from OpenAI.');
                    } else {
-                       extractedText = messageContent;
+                       extractedText = messageContent; // Use the raw text if not JSON
                        console.log('[API /uploadAndParseJD] Received plain text from OpenAI.');
                    }
                 } catch (parseError) {
                    console.warn('[API /uploadAndParseJD] OpenAI response was not valid JSON, treating as plain text. Error:', parseError.message);
                    console.warn('[API /uploadAndParseJD] Content that failed JSON parsing:', messageContent);
-                   extractedText = messageContent;
+                   extractedText = messageContent; // Keep the raw text
                    structuredData = null;
                 }
 
             } catch (openaiError) {
                 console.error("[API /uploadAndParseJD] Error calling OpenAI API:", openaiError);
-                // Propagate OpenAI errors
                 throw new Error(`Failed to analyze image with OpenAI: ${openaiError.message}`);
             }
 
@@ -192,7 +195,7 @@ export default async function handler(req, res) {
         } catch (processingError) {
              // Catch errors from file reading or OpenAI call within 'end' handler
              console.error('[API /uploadAndParseJD] Error during file processing/OpenAI call:', processingError);
-             reject({ statusCode: 500, message: processingError.message || "Server error during processing." }); // Reject the promise
+             reject({ statusCode: 500, message: processingError.message || "Server error during processing." });
         } finally {
              // Ensure cleanup happens after processing in 'end' or if an error occurred within 'end'
              if (tempFilePath) {
@@ -201,6 +204,7 @@ export default async function handler(req, res) {
                  }).catch(unlinkErr => {
                      console.warn(`[API /uploadAndParseJD] Warning: Failed to delete temporary file ${tempFilePath} in 'end' finally:`, unlinkErr.message);
                  });
+                 tempFilePath = null; // Mark as cleaned
              }
         }
     });
@@ -214,10 +218,9 @@ export default async function handler(req, res) {
       res.status(200).json(result);
   })
   .catch(errorInfo => {
-      // Promise was rejected (either from 'error' event or explicit reject in 'end')
+      // Promise was rejected
       const statusCode = errorInfo.statusCode || 500;
       const message = errorInfo.message || "Unknown server error during upload.";
-      // Log the internal error if present
       if (errorInfo.internalError) {
           console.error("[API /uploadAndParseJD] Internal error detail:", errorInfo.internalError);
       }
