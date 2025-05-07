@@ -475,29 +475,29 @@ export default function RecruitmentMatcher() {
             <div className="space-y-6">
               {/* 匹配结果展示 */}
               {matches.length > 0 ? (() => {
-                // 按分数降序排序
+                // 只展示前6名
                 const sortedMatches = [...matches].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
-                const topMatches = sortedMatches.slice(0, 5);
-                const restMatches = sortedMatches.slice(5);
+                const topMatches = sortedMatches.slice(0, 6);
                 return (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 justify-center">
                       {topMatches.map((match, index) => {
                         const matchLevel = getMatchLevel(match.matchScore);
                         const initials = match.name ? match.name[0].toUpperCase() : 'U';
                         return (
                           <div
                             key={index}
-                            className="bg-white rounded-2xl shadow-2xl p-8 mb-8 flex flex-col h-full border border-gray-100 hover:shadow-3xl transition-shadow"
+                            className="bg-white rounded-3xl shadow-xl p-8 flex flex-col h-full border border-gray-100 hover:shadow-2xl transition-all duration-200 ease-in-out hover:-translate-y-1 hover:scale-[1.025]"
+                            style={{ fontFamily: '-apple-system,BlinkMacSystemFont,\'San Francisco\',\'PingFang SC\',\'Segoe UI\',Arial,sans-serif' }}
                           >
                             {/* 顶部信息区 */}
                             <div className="flex items-center justify-between mb-6">
                               <div className="flex items-center gap-4">
-                                <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl font-bold text-blue-600">
+                                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-100 to-blue-50 flex items-center justify-center text-3xl font-bold text-blue-600 shadow-inner">
                                   {initials}
                                 </div>
                                 <div>
-                                  <div className="text-xl font-semibold text-gray-900">{match.name || 'N/A'}</div>
+                                  <div className="text-xl font-semibold text-gray-900 tracking-tight">{match.name || 'N/A'}</div>
                                   <div className="text-base text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
                                 </div>
                               </div>
@@ -509,16 +509,16 @@ export default function RecruitmentMatcher() {
 
                             {/* AI一句话总结 */}
                             {match.matchDetails?.summary && (
-                              <div className="text-lg font-semibold text-blue-900 mb-3">{match.matchDetails.summary}</div>
+                              <div className="text-base font-medium text-blue-900 mb-3 bg-blue-50 rounded-xl px-3 py-2 shadow-sm">{match.matchDetails.summary}</div>
                             )}
 
                             {/* 关键优势 */}
                             {match.matchDetails?.keyStrengths?.length > 0 && (
-                              <div className="mt-4">
-                                <div className="text-xs text-green-700 font-bold mb-2">关键优势</div>
+                              <div className="mt-3">
+                                <div className="text-xs text-green-700 font-bold mb-1">关键优势</div>
                                 <div className="flex flex-wrap gap-2">
                                   {match.matchDetails.keyStrengths.map((item, i) => (
-                                    <span key={i} className="inline-block bg-green-100 text-green-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
+                                    <span key={i} className="inline-block bg-green-50 text-green-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
                                   ))}
                                 </div>
                               </div>
@@ -526,11 +526,11 @@ export default function RecruitmentMatcher() {
 
                             {/* 关键劣势 */}
                             {match.matchDetails?.keyConcerns?.length > 0 && (
-                              <div className="mt-4">
-                                <div className="text-xs text-red-700 font-bold mb-2">关键劣势</div>
+                              <div className="mt-3">
+                                <div className="text-xs text-red-700 font-bold mb-1">关键劣势</div>
                                 <div className="flex flex-wrap gap-2">
                                   {match.matchDetails.keyConcerns.map((item, i) => (
-                                    <span key={i} className="inline-block bg-red-100 text-red-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
+                                    <span key={i} className="inline-block bg-red-50 text-red-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
                                   ))}
                                 </div>
                               </div>
@@ -539,7 +539,7 @@ export default function RecruitmentMatcher() {
                             {/* 面试建议 */}
                             {match.matchDetails?.interviewFocusAreas?.length > 0 && (
                               <div className="mt-4 border-t pt-4">
-                                <div className="text-xs text-blue-700 font-bold mb-2">面试建议</div>
+                                <div className="text-xs text-blue-700 font-bold mb-1">面试建议</div>
                                 <ul className="list-disc list-inside text-blue-800 text-sm">
                                   {match.matchDetails.interviewFocusAreas.map((item, i) => (
                                     <li key={i}>{item}</li>
@@ -549,16 +549,16 @@ export default function RecruitmentMatcher() {
                             )}
 
                             {/* 联系方式区 */}
-                            <div className="flex items-center gap-4 text-sm text-gray-500 mt-6 mb-2">
+                            <div className="flex items-center gap-4 text-sm text-gray-400 mt-6 mb-2">
                               {match.email && (
                                 <span className="flex items-center gap-1">
-                                  <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                  <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
                                   {match.email}
                                 </span>
                               )}
                               {match.phone && (
                                 <span className="flex items-center gap-1">
-                                  <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                  <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
                                   {match.phone}
                                 </span>
                               )}
@@ -568,7 +568,7 @@ export default function RecruitmentMatcher() {
                             <div className="flex justify-end mt-auto">
                               <button
                                 onClick={() => handleViewMatchDetail(match)}
-                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
+                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow transition-all duration-150"
                               >
                                 查看详情
                               </button>
@@ -577,122 +577,10 @@ export default function RecruitmentMatcher() {
                         );
                       })}
                     </div>
-                    {/* 查看更多按钮 */}
-                    {!showAllMatches && restMatches.length > 0 && (
-                      <div className="flex justify-center mt-6">
-                        <button
-                          onClick={() => setShowAllMatches(true)}
-                          className="px-6 py-2 bg-blue-50 text-blue-700 rounded-md font-medium border border-blue-200 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          查看更多（{restMatches.length}）
-                        </button>
-                      </div>
-                    )}
-                    {/* 展开后显示剩余候选人 */}
-                    {showAllMatches && restMatches.length > 0 && (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
-                        {restMatches.map((match, index) => {
-                          const matchLevel = getMatchLevel(match.matchScore);
-                          const initials = match.name ? match.name[0].toUpperCase() : 'U';
-                          return (
-                            <div
-                              key={index}
-                              className="bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col h-full p-6 hover:shadow-2xl transition-shadow"
-                            >
-                              {/* 顶部信息区 */}
-                              <div className="flex items-center justify-between mb-4">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600">
-                                    {initials}
-                                  </div>
-                                  <div>
-                                    <div className="text-lg font-semibold text-gray-900">{match.name || 'N/A'}</div>
-                                    <div className="text-sm text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
-                                  </div>
-                                </div>
-                                <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
-                                  <span className={`text-xl font-bold ${matchLevel.color}`}>{match.matchScore}%</span>
-                                  <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
-                                </div>
-                              </div>
-
-                              {/* AI一句话总结 */}
-                              {match.matchDetails?.summary && (
-                                <div className="mb-2 text-gray-700 font-medium">{match.matchDetails.summary}</div>
-                              )}
-
-                              {/* 关键优势 */}
-                              {match.matchDetails?.keyStrengths?.length > 0 && (
-                                <div className="mb-2">
-                                  <div className="text-xs text-green-700 font-bold mb-1">关键优势</div>
-                                  <ul className="list-disc list-inside text-sm text-green-800">
-                                    {match.matchDetails.keyStrengths.map((item, i) => (
-                                      <li key={i}>{item}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* 关键劣势 */}
-                              {match.matchDetails?.keyConcerns?.length > 0 && (
-                                <div className="mb-2">
-                                  <div className="text-xs text-red-700 font-bold mb-1">关键劣势</div>
-                                  <ul className="list-disc list-inside text-sm text-red-800">
-                                    {match.matchDetails.keyConcerns.map((item, i) => (
-                                      <li key={i}>{item}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* 面试建议 */}
-                              {match.matchDetails?.interviewFocusAreas?.length > 0 && (
-                                <div className="mb-2">
-                                  <div className="text-xs text-blue-700 font-bold mb-1">面试建议</div>
-                                  <ul className="list-disc list-inside text-sm text-blue-800">
-                                    {match.matchDetails.interviewFocusAreas.map((item, i) => (
-                                      <li key={i}>{item}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-
-                              {/* 联系方式区 */}
-                              <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-                                {match.email && (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                                    {match.email}
-                                  </span>
-                                )}
-                                {match.phone && (
-                                  <span className="flex items-center gap-1">
-                                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                                    {match.phone}
-                                  </span>
-                                )}
-                              </div>
-
-                              {/* 操作区 */}
-                              <div className="flex justify-end mt-auto">
-                                <button
-                                  onClick={() => handleViewMatchDetail(match)}
-                                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
-                                >
-                                  查看详情
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
                   </>
                 );
               })() : (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">暂无匹配结果</p>
-                </div>
+                <div className="text-center text-gray-400 py-12 text-lg">暂无匹配结果</div>
               )}
             </div>
           )}
