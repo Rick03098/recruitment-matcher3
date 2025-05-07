@@ -1,6 +1,6 @@
 // pages/api/uploadAndParseJD.js
-import { formidable } from 'formidable';
-import fs from 'fs/promises';
+import formidable from 'formidable';
+import fs from 'fs';
 import OpenAI from 'openai';
 
 // --- OpenAI Client Initialization ---
@@ -33,7 +33,7 @@ const formidableOptions = {
     filter: function ({ name, originalFilename, mimetype }) {
         const allowed = mimetype && mimetype.startsWith('image/');
         if (!allowed) {
-            console.warn(`[API /uploadAndParseJD] Rejected file upload: ${originalFilename} (type: ${mimetype}). Only images are allowed.`);
+            console.warn(`[API /uploadAndParseJD] 拒绝文件上传: ${originalFilename} (类型: ${mimetype}). 仅支持图片文件。`);
         }
         return allowed;
     },
@@ -45,185 +45,179 @@ const formidableOptions = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', ['POST']);
-    return res.status(405).json({ success: false, message: `Method ${req.method} Not Allowed. Use POST.` });
+    return res.status(405).json({ success: false, message: `方法 ${req.method} 不允许。请使用 POST。` });
   }
 
   if (!openai) {
-    return res.status(500).json({ success: false, message: "OpenAI service configuration error." });
+    return res.status(500).json({ success: false, message: "OpenAI 服务配置错误。" });
   }
 
-  console.log('[API /uploadAndParseJD] Received POST request. Processing with event-based formidable...');
+  console.log('[API /uploadAndParseJD] 收到 POST 请求。开始处理...');
 
-  // --- Use Promise to wrap formidable event handling ---
   await new Promise((resolve, reject) => {
     const form = formidable(formidableOptions);
     let fields = {};
     let files = {};
-    let tempFilePath = null; // For cleanup
+    let tempFilePath = null;
 
     form.on('field', (fieldName, value) => {
-        console.log(`[API /uploadAndParseJD] Received field: ${fieldName}`);
-        fields[fieldName] = value;
+      console.log(`[API /uploadAndParseJD] 收到字段: ${fieldName}`);
+      fields[fieldName] = value;
     });
 
     form.on('file', (fieldName, file) => {
-        console.log(`[API /uploadAndParseJD] Received file: ${fieldName}, Original Name: ${file.originalFilename}, Temp Path: ${file.filepath}`);
-        if (fieldName === 'jobFile') {
-            if (!files[fieldName]) {
-                 files[fieldName] = [];
-            }
-            files[fieldName].push(file);
-            tempFilePath = file.filepath; // Keep track for cleanup
-        } else {
-             console.warn(`[API /uploadAndParseJD] Received unexpected file field: ${fieldName}`);
-             fs.unlink(file.filepath).catch(err => console.error(`Error removing unexpected file ${file.filepath}:`, err));
+      console.log(`[API /uploadAndParseJD] 收到文件: ${fieldName}, 原始名称: ${file.originalFilename}, 临时路径: ${file.filepath}`);
+      if (fieldName === 'jobFile') {
+        if (!files[fieldName]) {
+          files[fieldName] = [];
         }
+        files[fieldName].push(file);
+        tempFilePath = file.filepath;
+      } else {
+        console.warn(`[API /uploadAndParseJD] 收到意外的文件字段: ${fieldName}`);
+        fs.unlink(file.filepath).catch(err => console.error(`删除意外文件 ${file.filepath} 时出错:`, err));
+      }
     });
 
     form.on('error', (err) => {
-        console.error('[API /uploadAndParseJD] Formidable parsing error:', err);
-        if (tempFilePath) {
-             fs.unlink(tempFilePath).catch(unlinkErr => console.error(`Error cleaning up temp file ${tempFilePath} after formidable error:`, unlinkErr));
-        }
-        reject({ statusCode: 500, message: `Error parsing form data: ${err.message}`, internalError: err });
+      console.error('[API /uploadAndParseJD] Formidable 解析错误:', err);
+      if (tempFilePath) {
+        fs.unlink(tempFilePath).catch(unlinkErr => console.error(`清理临时文件 ${tempFilePath} 时出错:`, unlinkErr));
+      }
+      reject({ statusCode: 500, message: `解析表单数据时出错: ${err.message}`, internalError: err });
     });
 
     form.on('end', async () => {
-        console.log('[API /uploadAndParseJD] Formidable parsing ended.');
-        try {
-            const uploadedFile = files.jobFile?.[0];
+      console.log('[API /uploadAndParseJD] Formidable 解析完成。');
+      try {
+        const uploadedFile = files.jobFile?.[0];
 
-            if (!uploadedFile) {
-                console.error("[API /uploadAndParseJD] No file found with field name 'jobFile'. Files received:", files);
-                return reject({ statusCode: 400, message: "No image file uploaded or incorrect field name used ('jobFile' expected)." });
-            }
-
-            // --- File processing and OpenAI call ---
-            const originalFilename = uploadedFile.originalFilename;
-            const mimeType = uploadedFile.mimetype;
-            let base64Image;
-
-            try {
-                const imageBuffer = await fs.readFile(tempFilePath);
-                base64Image = imageBuffer.toString('base64');
-                console.log(`[API /uploadAndParseJD] Image file read and converted to Base64.`);
-            } catch (readError) {
-                console.error(`[API /uploadAndParseJD] Error reading file ${tempFilePath}:`, readError);
-                throw new Error('Error reading uploaded image file.');
-            }
-
-            let extractedText = '';
-            let structuredData = null;
-
-            try {
-                console.log('[API /uploadAndParseJD] Sending image to OpenAI with improved prompt...');
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4o-mini", // Or "gpt-4o"
-                    messages: [
-                     {
-                       role: "user",
-                       content: [
-                         {
-                           type: "text",
-                           // ----- IMPROVED PROMPT -----
-                           text: `Analyze the following job description image. Extract the full text accurately. Then, based on the extracted text, provide a JSON object containing the key requirements. The JSON object MUST have these exact keys:
-- "jobTitle": string (The specific job position being advertised, like "Software Engineer" or "Product Manager". If no specific position is clearly mentioned for these requirements, return null. Do not extract recruitment slogans like "招贤纳仕" or similar as the job title.)
-- "requiredSkills": array of strings (Extract ALL items listed explicitly under a heading like '技能要求', '任职要求', 'Requirements', etc. Ensure every numbered or listed item in that specific section is included in the array, trying to keep original wording.)
-- "preferredSkills": array of strings (List any skills explicitly mentioned as preferred, optional, '加分项' or 'nice to have'. If none, return an empty array.)
-- "yearsExperience": string (Extract required years of experience, e.g., "3-5 years", "5+", or null if not mentioned.)
-- "educationLevel": string (Extract minimum education level required, e.g., "Bachelor's", "Master's", "本科", "硕士", or null if not mentioned.)
-
-If you cannot reliably extract the JSON structure, respond with ONLY the full extracted text from the image. Otherwise, respond ONLY with the valid JSON object. Focus ONLY on the content derived from the image.`,
-                           // ----- END IMPROVED PROMPT -----
-                         },
-                         {
-                           type: "image_url",
-                           image_url: {
-                             "url": `data:${mimeType};base64,${base64Image}`,
-                             "detail": "high" // Use "high" detail for better OCR on text-heavy images
-                           },
-                         },
-                       ],
-                     },
-                    ],
-                    max_tokens: 2000, // Might need adjustment based on JD length
-                    temperature: 0.1, // Keep low temperature for accuracy
-                });
-
-                const messageContent = response.choices[0]?.message?.content;
-                console.log('[API /uploadAndParseJD] OpenAI response received.');
-                // console.log('[API /uploadAndParseJD] Raw OpenAI response content:', messageContent); // Uncomment for deep debugging
-
-                if (!messageContent) {
-                    throw new Error("OpenAI analysis returned no content.");
-                }
-
-                // Attempt to parse as JSON first, otherwise treat as plain text
-                try {
-                   // Trim whitespace and check if it looks like a JSON object
-                   const trimmedContent = messageContent.trim();
-                   if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
-                       structuredData = JSON.parse(trimmedContent);
-                       // Generate a summary text fallback from structured data
-                       extractedText = `Job Title: ${structuredData.jobTitle || 'N/A'}\nRequired Skills: ${(structuredData.requiredSkills || []).join(', ')}\n... (extracted from JSON)`;
-                       console.log('[API /uploadAndParseJD] Parsed structured JSON data from OpenAI.');
-                   } else {
-                       extractedText = messageContent; // Use the raw text if not JSON
-                       console.log('[API /uploadAndParseJD] Received plain text from OpenAI.');
-                   }
-                } catch (parseError) {
-                   console.warn('[API /uploadAndParseJD] OpenAI response was not valid JSON, treating as plain text. Error:', parseError.message);
-                   console.warn('[API /uploadAndParseJD] Content that failed JSON parsing:', messageContent);
-                   extractedText = messageContent; // Keep the raw text
-                   structuredData = null;
-                }
-
-            } catch (openaiError) {
-                console.error("[API /uploadAndParseJD] Error calling OpenAI API:", openaiError);
-                throw new Error(`Failed to analyze image with OpenAI: ${openaiError.message}`);
-            }
-
-            // Resolve the promise with the successful result
-            resolve({
-                 success: true,
-                 message: "Job description image processed successfully.",
-                 extractedText: extractedText,
-                 structuredData: structuredData,
-                 fileName: originalFilename,
-            });
-
-        } catch (processingError) {
-             // Catch errors from file reading or OpenAI call within 'end' handler
-             console.error('[API /uploadAndParseJD] Error during file processing/OpenAI call:', processingError);
-             reject({ statusCode: 500, message: processingError.message || "Server error during processing." });
-        } finally {
-             // Ensure cleanup happens after processing in 'end' or if an error occurred within 'end'
-             if (tempFilePath) {
-                 await fs.unlink(tempFilePath).then(() => {
-                     console.log(`[API /uploadAndParseJD] Temporary file ${tempFilePath} deleted successfully in 'end' finally.`);
-                 }).catch(unlinkErr => {
-                     console.warn(`[API /uploadAndParseJD] Warning: Failed to delete temporary file ${tempFilePath} in 'end' finally:`, unlinkErr.message);
-                 });
-                 tempFilePath = null; // Mark as cleaned
-             }
+        if (!uploadedFile) {
+          console.error("[API /uploadAndParseJD] 未找到字段名为 'jobFile' 的文件。收到的文件:", files);
+          return reject({ statusCode: 400, message: "未上传图片文件或使用了错误的字段名（应为 'jobFile'）。" });
         }
+
+        const originalFilename = uploadedFile.originalFilename;
+        const mimeType = uploadedFile.mimetype;
+        let base64Image;
+
+        try {
+          const imageBuffer = await fs.readFile(tempFilePath);
+          base64Image = imageBuffer.toString('base64');
+          console.log(`[API /uploadAndParseJD] 图片文件已读取并转换为 Base64。`);
+        } catch (readError) {
+          console.error(`[API /uploadAndParseJD] 读取文件 ${tempFilePath} 时出错:`, readError);
+          throw new Error('读取上传的图片文件时出错。');
+        }
+
+        let extractedText = '';
+        let structuredData = null;
+
+        try {
+          console.log('[API /uploadAndParseJD] 正在使用改进的提示词发送图片到 OpenAI...');
+          const response = await openai.chat.completions.create({
+            model: "gpt-4-vision-preview",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: `分析以下职位描述图片。首先准确提取完整文本。然后，基于提取的文本，提供一个包含关键要求的 JSON 对象。JSON 对象必须包含以下精确的键：
+- "jobTitle": string (广告中提到的具体职位，如"软件工程师"或"产品经理"。如果没有明确提到具体职位，返回 null。不要将"招贤纳仕"等招聘口号提取为职位名称。)
+- "requiredSkills": string[] (提取所有在"技能要求"、"任职要求"、"Requirements"等标题下明确列出的项目。确保该特定部分中的每个编号或列表项都包含在数组中，尽量保持原始措辞。)
+- "preferredSkills": string[] (列出任何明确提到为优先、可选、"加分项"或"nice to have"的技能。如果没有，返回空数组。)
+- "yearsExperience": string (提取所需的工作经验年限，例如"3-5年"、"5+"，如果未提及则返回 null。)
+- "educationLevel": string (提取最低学历要求，例如"本科"、"硕士"，如果未提及则返回 null。)
+
+如果无法可靠地提取 JSON 结构，仅返回从图片中提取的完整文本。否则，仅返回有效的 JSON 对象。仅关注从图片中派生的内容。`
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      "url": `data:${mimeType};base64,${base64Image}`,
+                      "detail": "high"
+                    },
+                  },
+                ],
+              },
+            ],
+            max_tokens: 2000,
+            temperature: 0.1,
+          });
+
+          const messageContent = response.choices[0]?.message?.content;
+          console.log('[API /uploadAndParseJD] 收到 OpenAI 响应。');
+
+          if (!messageContent) {
+            throw new Error("OpenAI 分析未返回内容。");
+          }
+
+          try {
+            const trimmedContent = messageContent.trim();
+            if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+              structuredData = JSON.parse(trimmedContent);
+              extractedText = `职位名称: ${structuredData.jobTitle || '未指定'}\n必备技能: ${(structuredData.requiredSkills || []).join(', ')}\n... (从 JSON 提取)`;
+              console.log('[API /uploadAndParseJD] 从 OpenAI 解析了结构化 JSON 数据。');
+            } else {
+              extractedText = messageContent;
+              console.log('[API /uploadAndParseJD] 从 OpenAI 收到纯文本。');
+            }
+          } catch (parseError) {
+            console.warn('[API /uploadAndParseJD] OpenAI 响应不是有效的 JSON，作为纯文本处理。错误:', parseError.message);
+            extractedText = messageContent;
+            structuredData = null;
+          }
+
+        } catch (openaiError) {
+          console.error("[API /uploadAndParseJD] 调用 OpenAI API 时出错:", openaiError);
+          throw new Error(`使用 OpenAI 分析图片失败: ${openaiError.message}`);
+        }
+
+        // 清理临时文件
+        try {
+          await fs.unlink(tempFilePath);
+          console.log(`[API /uploadAndParseJD] 临时文件 ${tempFilePath} 已清理。`);
+        } catch (unlinkError) {
+          console.warn(`[API /uploadAndParseJD] 清理临时文件 ${tempFilePath} 时出错:`, unlinkError);
+        }
+
+        resolve({
+          success: true,
+          message: "职位描述图片处理成功。",
+          extractedText: extractedText,
+          structuredData: structuredData,
+          fileName: originalFilename,
+        });
+
+      } catch (error) {
+        console.error('[API /uploadAndParseJD] 处理过程中出错:', error);
+        reject({
+          statusCode: 500,
+          message: `处理图片时出错: ${error.message}`,
+          internalError: error
+        });
+      }
     });
 
-    // Start parsing the request
-    form.parse(req);
-
-  })
-  .then(result => {
-      // Promise resolved successfully
-      res.status(200).json(result);
-  })
-  .catch(errorInfo => {
-      // Promise was rejected
-      const statusCode = errorInfo.statusCode || 500;
-      const message = errorInfo.message || "Unknown server error during upload.";
-      if (errorInfo.internalError) {
-          console.error("[API /uploadAndParseJD] Internal error detail:", errorInfo.internalError);
+    form.parse(req, (err, fields, files) => {
+      if (err) {
+        console.error('[API /uploadAndParseJD] Formidable 解析错误:', err);
+        reject({
+          statusCode: 500,
+          message: `解析表单数据时出错: ${err.message}`,
+          internalError: err
+        });
       }
-      res.status(statusCode).json({ success: false, message: message });
+    });
+  }).then(result => {
+    res.status(200).json(result);
+  }).catch(error => {
+    console.error('[API /uploadAndParseJD] 处理请求时出错:', error);
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || '处理请求时发生未知错误',
+      internalError: process.env.NODE_ENV === 'development' ? error.internalError : undefined
+    });
   });
 }
