@@ -268,20 +268,12 @@ export default function RecruitmentMatcher() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* 顶部LOGO+标题 */}
-      <header className="bg-white py-8 flex flex-col items-center">
-        <img src="/logo-miracleplus-bars.png" alt="奇绩Logo" className="h-16 w-auto mb-4" />
-        <h1 className="text-3xl font-bold text-gray-900 tracking-tight" style={{fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif'}}>
-          奇绩校友招聘
-        </h1>
-      </header>
-
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
-              {/* SVG LOGO */}
+              {/* SVG LOGO + 品牌文字 */}
               <svg width="130" height="60" viewBox="0 0 130 60" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height: '40px', width: 'auto'}}>
                 <rect x="0"   y="0"  width="10" height="60" fill="#1680FF"/>
                 <rect x="15"  y="10" width="10" height="50" fill="#1680FF"/>
@@ -293,6 +285,9 @@ export default function RecruitmentMatcher() {
                 <rect x="105" y="10" width="10" height="50" fill="#1680FF"/>
                 <rect x="120" y="0"  width="10" height="60" fill="#1680FF"/>
               </svg>
+              <span className="ml-3 text-xl font-bold text-gray-900 tracking-tight" style={{fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif'}}>
+                奇绩校友招聘
+              </span>
             </div>
             <div className="flex items-center space-x-4">
               <button
