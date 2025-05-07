@@ -130,59 +130,84 @@ export async function parseResumeWithOpenAI(resumeText) {
  * @returns {Promise<object|null>} 解析后的结构化职位要求 (JSON 对象) 或 null
  * @throws {Error} 如果 OpenAI 调用失败或返回无效数据
  */
-export async function parseJobDescriptionWithOpenAI(jobDescriptionText) {
-  if (!jobDescriptionText || jobDescriptionText.trim().length < 20) {
-    return {
-      success: true,
-      data: {
-        jobTitle: '未指定',
-        requiredSkills: [],
-        preferredSkills: [],
-        yearsExperience: null,
-        educationLevel: null
-      }
-    };
-  }
-
+export async function parseJobDescriptionWithOpenAI(text) {
   try {
+    if (!text || typeof text !== 'string') {
+      return {
+        success: false,
+        error: '无效的输入文本',
+        data: null
+      };
+    }
+
+    const prompt = `请从以下职位描述中提取关键信息，并以JSON格式返回。如果某项信息不存在，请将对应字段设为null：
+
+职位名称（jobTitle）：
+必需技能（requiredSkills）：数组格式
+优先技能（preferredSkills）：数组格式
+工作经验要求（yearsOfExperience）：数字
+学历要求（educationLevel）：字符串
+
+职位描述：
+${text}
+
+请确保返回的是有效的JSON格式，包含上述所有字段。`;
+
     const response = await openai.chat.completions.create({
-      model: "gpt-4",
+      model: "gpt-3.5-turbo",
       messages: [
         {
           role: "system",
-          content: "你是一个专业的招聘顾问。请分析职位描述并提取关键信息。必须以JSON格式返回，格式如下：{\"jobTitle\":\"职位名称\",\"requiredSkills\":[\"技能1\",\"技能2\"],\"preferredSkills\":[\"技能1\",\"技能2\"],\"yearsExperience\":\"工作经验要求\",\"educationLevel\":\"学历要求\"}"
+          content: "你是一个专业的招聘顾问，擅长从职位描述中提取结构化信息。请确保返回的数据格式正确且完整。"
         },
         {
           role: "user",
-          content: jobDescriptionText
+          content: prompt
         }
       ],
       temperature: 0.3,
-      response_format: { type: "json_object" }
+      max_tokens: 1000,
     });
 
-    const content = response.choices[0]?.message?.content;
-    if (!content) {
-      throw new Error('OpenAI返回空响应');
+    if (!response.choices || !response.choices[0] || !response.choices[0].message) {
+      throw new Error('OpenAI响应格式无效');
     }
 
-    const parsedData = ensureValidJSON(content);
+    const content = response.choices[0].message.content;
     
-    return {
-      success: true,
-      data: {
-        jobTitle: parsedData.jobTitle || '未指定',
-        requiredSkills: Array.isArray(parsedData.requiredSkills) ? parsedData.requiredSkills : [],
-        preferredSkills: Array.isArray(parsedData.preferredSkills) ? parsedData.preferredSkills : [],
-        yearsExperience: parsedData.yearsExperience || null,
-        educationLevel: parsedData.educationLevel || null
+    try {
+      const parsedData = JSON.parse(content);
+      
+      // 验证返回的数据结构
+      const requiredFields = ['jobTitle', 'requiredSkills', 'preferredSkills', 'yearsOfExperience', 'educationLevel'];
+      const missingFields = requiredFields.filter(field => !(field in parsedData));
+      
+      if (missingFields.length > 0) {
+        return {
+          success: false,
+          error: `返回数据缺少必要字段: ${missingFields.join(', ')}`,
+          data: parsedData
+        };
       }
-    };
+
+      return {
+        success: true,
+        error: null,
+        data: parsedData
+      };
+    } catch (parseError) {
+      console.error('JSON解析错误:', parseError);
+      return {
+        success: false,
+        error: '无法解析OpenAI返回的数据',
+        data: null
+      };
+    }
   } catch (error) {
-    console.error('职位描述解析错误:', error);
+    console.error('OpenAI API调用错误:', error);
     return {
       success: false,
-      error: error.message,
+      error: `OpenAI服务调用失败: ${error.message}`,
       data: null
     };
   }

@@ -128,42 +128,76 @@ export default function RecruitmentMatcher() {
       formData.append('jobFile', file);
 
       let response;
-      if (file.type.startsWith('image/')) {
-        response = await fetch('/api/uploadAndParseJD', {
-          method: 'POST',
-          body: formData,
-        });
-      } else {
-        response = await fetch('/api/parseJDFile', {
-          method: 'POST',
-          body: formData,
-        });
-      }
+      let result;
 
-      const result = await response.json();
+      try {
+        if (file.type.startsWith('image/')) {
+          response = await fetch('/api/uploadAndParseJD', {
+            method: 'POST',
+            body: formData,
+          });
+        } else {
+          response = await fetch('/api/parseJDFile', {
+            method: 'POST',
+            body: formData,
+          });
+        }
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.error || '文件处理失败');
-      }
+        // 检查响应状态
+        if (!response.ok) {
+          throw new Error(`HTTP错误: ${response.status}`);
+        }
 
-      // 更新职位描述
-      if (result.data && result.data.text) {
-        setJobDescription(result.data.text);
-      }
-      
-      // 如果有结构化数据，更新相关字段
-      if (result.data && result.data.structuredData) {
-        setJobRequirements(result.data.structuredData);
-      }
+        // 尝试解析响应
+        const text = await response.text();
+        if (!text) {
+          throw new Error('服务器返回空响应');
+        }
 
-      // 显示成功消息
-      setUploadResumeSuccess('文件上传并解析成功');
-      setTimeout(() => setUploadResumeSuccess(null), 3000);
+        try {
+          result = JSON.parse(text);
+        } catch (parseError) {
+          console.error('JSON解析错误:', parseError);
+          console.error('原始响应:', text);
+          throw new Error('服务器响应格式错误');
+        }
+
+        // 验证响应格式
+        if (typeof result !== 'object' || result === null) {
+          throw new Error('无效的响应格式');
+        }
+
+        if (!result.success) {
+          throw new Error(result.error || '文件处理失败');
+        }
+
+        // 更新职位描述
+        if (result.data && result.data.text) {
+          setJobDescription(result.data.text);
+        }
+        
+        // 如果有结构化数据，更新相关字段
+        if (result.data && result.data.structuredData) {
+          setJobRequirements(result.data.structuredData);
+        }
+
+        // 显示成功消息
+        setUploadResumeSuccess('文件上传并解析成功');
+        setTimeout(() => setUploadResumeSuccess(null), 3000);
+
+      } catch (fetchError) {
+        console.error('请求错误:', fetchError);
+        throw new Error(`请求失败: ${fetchError.message}`);
+      }
 
     } catch (error) {
       console.error('文件处理错误:', error);
       setError(error.message || '文件处理失败，请重试');
       setJobFile(null);
+      // 重置文件输入
+      if (e.target) {
+        e.target.value = '';
+      }
     } finally {
       setIsUploadingJD(false);
     }
