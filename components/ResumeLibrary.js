@@ -29,222 +29,173 @@ const SkillTag = ({ children }) => (
   </span>
 );
 
-export default function ResumeLibrary({ activeTab, resumes, isLoading, error, dataSource, refreshResumes }) {
+export default function ResumeLibrary({ resumes, isLoading, error, onRefresh }) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [importSuccess, setImportSuccess] = useState(null); // 批量导入成功消息
-
-  // --- 新增：用于详情模态框的状态 ---
+  const [importSuccess, setImportSuccess] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedResume, setSelectedResume] = useState(null);
-  // --- 状态结束 ---
 
-  // 处理批量导入成功的回调
   const handleImportSuccess = (importedResults) => {
     setImportSuccess(`成功导入 ${importedResults.length} 个简历`);
-    refreshResumes(); // 刷新列表
-    setTimeout(() => setImportSuccess(null), 3000); // 3秒后清除消息
+    onRefresh();
+    setTimeout(() => setImportSuccess(null), 3000);
   };
 
-  // --- 新增：处理查看详情 ---
   const handleViewResume = (resume) => {
-    setSelectedResume(resume); // 设置当前选中的简历
-    setIsDetailModalOpen(true); // 打开模态框
+    setSelectedResume(resume);
+    setIsDetailModalOpen(true);
   };
-
-  // --- 新增：处理删除 (需要后端 API 支持) ---
-  const handleDeleteResume = async (resume) => {
-     // 基本的 ID 检查
-     if (!resume || !resume.id) {
-         console.error("尝试删除无效的简历对象:", resume);
-         alert("无法删除：无效的简历信息。");
-         return;
-     }
-
-     if (window.confirm(`确定要删除 ${resume.name || `ID: ${resume.id}`} 的简历吗？这个操作无法撤销。`)) {
-         console.log('尝试删除简历:', resume.id);
-         alert(`注意：删除功能目前需要后端 API 支持。\n即将模拟删除 ID: ${resume.id}`);
-         // 实际开发中取消下面的注释并确保 API 端点存在
-         /*
-         try {
-           const response = await fetch(`/api/deleteResume?id=${resume.id}`, { method: 'DELETE' });
-           if (!response.ok) {
-             const errorData = await response.json().catch(() => ({ message: '无法解析错误响应' })); // 尝试解析 JSON，失败则给默认消息
-             throw new Error(errorData.message || `删除失败 (状态 ${response.status})`);
-           }
-           alert('删除成功！');
-           refreshResumes(); // 刷新列表
-         } catch (err) {
-           console.error("删除简历失败:", err);
-           alert(`删除失败: ${err.message}`);
-         }
-         */
-     }
-  };
-   // --- 删除处理结束 ---
-
-  // 如果当前 Tab 不是简历库，不渲染任何东西
-  if (activeTab !== 'resumes') {
-    return null;
-  }
 
   return (
-    <div className="p-1"> {/* 可以加一些内边距 */}
-      {/* 标题和操作按钮 */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-5 gap-3">
-        <h2 className="text-xl font-semibold text-gray-800">
-          简历库
-          {dataSource && (
-            <span className="text-sm text-gray-500 ml-2">
-              (数据源: {dataSource} | 共 {resumes?.length || 0} 份)
-            </span>
-          )}
-        </h2>
-        <div className="flex space-x-2">
+    <div className="space-y-6">
+      {/* 顶部操作栏 */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">简历库</h2>
+          <p className="mt-1 text-sm text-gray-500">
+            共 {resumes?.length || 0} 份简历
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-3">
           <button
-            className="text-sm px-4 py-2 border rounded text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-            onClick={refreshResumes}
+            onClick={onRefresh}
             disabled={isLoading}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
+            <svg className={`-ml-1 mr-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
             {isLoading ? '刷新中...' : '刷新列表'}
           </button>
           <button
-            className="text-sm px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
             onClick={() => setIsImportModalOpen(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            批量导入 PDF
+            <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+            </svg>
+            批量导入
           </button>
         </div>
       </div>
 
-      {/* 导入成功提示 */}
+      {/* 状态提示 */}
       {importSuccess && (
-        <div className="mb-4 p-3 bg-green-100 text-green-700 rounded-md shadow-sm">
-          {importSuccess}
+        <div className="rounded-md bg-green-50 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">{importSuccess}</p>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 错误提示 */}
       {error && (
-        <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-md shadow-sm">
-          加载简历库时出错: {error}
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-red-800">加载简历库时出错: {error}</p>
+            </div>
+          </div>
         </div>
       )}
 
       {/* 加载状态 */}
       {isLoading && (
-        <div className="text-center py-10">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-          <p className="mt-2 text-gray-500">正在加载简历库...</p>
+        <div className="flex flex-col items-center justify-center py-12">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+          <p className="mt-4 text-sm text-gray-500">正在加载简历库...</p>
         </div>
       )}
 
-      {/* 简历表格 (非加载状态) */}
+      {/* 简历列表 */}
       {!isLoading && (
-        <div className="overflow-x-auto shadow border-b border-gray-200 rounded-lg">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                {/* --- 更新表头 --- */}
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">姓名</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">当前/最近职位</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">总经验</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">核心技能 (部分)</th>
-                {/* <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">工具 (部分)</th> */}
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">来源</th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">上传日期</th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">操作</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {resumes && resumes.length > 0 ? (
-                resumes.map((resume) => (
-                  <tr key={resume?.id || JSON.stringify(resume)} className="hover:bg-gray-50 transition-colors duration-150"> {/* 添加 key 的健壮性 */}
-                    {/* --- 更新表格数据列 --- */}
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">{resume.name || 'N/A'}</div>
-                       {/* 可以选择显示邮箱或电话 */}
-                       <div className="text-xs text-gray-500">{resume.contact?.email || ''}</div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{resume.title || 'N/A'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {resume.totalYearsExperience !== null && typeof resume.totalYearsExperience === 'number'
-                        ? `${resume.totalYearsExperience} 年`
-                        : (resume.totalYearsExperience || '未知') /* 处理非数字或 null/undefined */}
-                    </td>
-                    <td className="px-6 py-4">
-                       {/* 使用 SkillTag 组件展示前 3 个核心技能 */}
-                       <div className="flex flex-wrap">
-                         {Array.isArray(resume.coreSkills) && resume.coreSkills.slice(0, 3).map((skill, i) => <SkillTag key={i}>{skill}</SkillTag>)}
-                         {Array.isArray(resume.coreSkills) && resume.coreSkills.length > 3 && (
-                           <span className="text-xs text-gray-400 self-center ml-1">+{resume.coreSkills.length - 3}</span>
-                         )}
-                         {(!Array.isArray(resume.coreSkills) || resume.coreSkills.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
-                       </div>
-                    </td>
-                    {/*
-                    <td className="px-6 py-4">
-                       <div className="flex flex-wrap">
-                         {Array.isArray(resume.tools) && resume.tools.slice(0, 3).map((tool, i) => <SkillTag key={i}>{tool}</SkillTag>)}
-                         {Array.isArray(resume.tools) && resume.tools.length > 3 && (
-                            <span className="text-xs text-gray-400 self-center ml-1">+{resume.tools.length - 3}</span>
-                         )}
-                         {(!Array.isArray(resume.tools) || resume.tools.length === 0) && <span className="text-xs text-gray-400 italic">无</span>}
-                       </div>
-                    </td>
-                     */}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{resume.source || 'N/A'}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{formatDate(resume.uploadDate)}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                       {/* --- 操作按钮 --- */}
-                       <button
-                         onClick={() => handleViewResume(resume)}
-                         className="text-indigo-600 hover:text-indigo-900 mr-3"
-                       >
-                         查看详情
-                       </button>
-                       <button
-                         onClick={() => handleDeleteResume(resume)}
-                         className="text-red-600 hover:text-red-900"
-                       >
-                         删除
-                       </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                // 空状态显示
-                <tr>
-                  <td colSpan={7} className="px-6 py-10 text-center"> {/* Adjusted colSpan */}
-                     <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                         <path vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13h6m-3-3v6m-9 1V7a2 2 0 012-2h6l2 2h6a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
-                     </svg>
-                     <h3 className="mt-2 text-sm font-medium text-gray-900">简历库当前为空</h3>
-                     <p className="mt-1 text-sm text-gray-500">请先上传或批量导入简历。</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {resumes && resumes.length > 0 ? (
+            resumes.map((resume) => (
+              <div
+                key={resume?.id || JSON.stringify(resume)}
+                className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200"
+              >
+                <div className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium text-gray-900">{resume.name || 'N/A'}</h3>
+                      <p className="text-sm text-gray-500">{resume.contact?.email || ''}</p>
+                    </div>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                      {resume.totalYearsExperience ? `${resume.totalYearsExperience} 年经验` : '经验未知'}
+                    </span>
+                  </div>
+                  
+                  <div className="mt-4">
+                    <p className="text-sm font-medium text-gray-900">{resume.title || '职位未知'}</p>
+                    <div className="mt-2">
+                      <h4 className="text-xs font-medium text-gray-500 uppercase tracking-wider">核心技能</h4>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {Array.isArray(resume.coreSkills) && resume.coreSkills.slice(0, 3).map((skill, i) => (
+                          <SkillTag key={i}>{skill}</SkillTag>
+                        ))}
+                        {Array.isArray(resume.coreSkills) && resume.coreSkills.length > 3 && (
+                          <span className="text-xs text-gray-400">+{resume.coreSkills.length - 3}</span>
+                        )}
+                        {(!Array.isArray(resume.coreSkills) || resume.coreSkills.length === 0) && (
+                          <span className="text-xs text-gray-400 italic">无</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex items-center justify-between">
+                    <div className="text-sm text-gray-500">
+                      {formatDate(resume.uploadDate)}
+                    </div>
+                    <button
+                      onClick={() => handleViewResume(resume)}
+                      className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                    >
+                      查看详情
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="col-span-full text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">暂无简历</h3>
+              <p className="mt-1 text-sm text-gray-500">开始上传简历以建立您的简历库。</p>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 批量导入模态框 */}
+      {/* 模态框 */}
       <BatchImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onImportSuccess={handleImportSuccess}
+        onSuccess={handleImportSuccess}
       />
 
-      {/* --- 新增：简历详情模态框 --- */}
       {selectedResume && (
-          <ResumeDetailModal
-              isOpen={isDetailModalOpen}
-              onClose={() => setIsDetailModalOpen(false)}
-              resume={selectedResume}
-          />
+        <ResumeDetailModal
+          isOpen={isDetailModalOpen}
+          onClose={() => setIsDetailModalOpen(false)}
+          resume={selectedResume}
+        />
       )}
-      {/* --- 模态框结束 --- */}
-
     </div>
   );
 }
