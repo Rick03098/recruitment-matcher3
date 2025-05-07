@@ -262,7 +262,11 @@ export default async function handler(req, res) {
     if (!jobDescription || jobDescription.trim().length < 20) { /* ... JD 检查 ... */ }
     if (!Array.isArray(resumes) || resumes.length === 0) { /* ... 简历检查 ... */ }
 
-    console.log(`[API /match - AI Report Mode] 收到请求，JD 长度: ${jobDescription.length}, 简历数量: ${resumes.length}`);
+    // 只处理前10份简历，防止限流和超时
+    const BATCH_SIZE = 10;
+    const resumesToProcess = resumes.slice(0, BATCH_SIZE);
+
+    console.log(`[API /match - AI Report Mode] 收到请求，JD 长度: ${jobDescription.length}, 简历数量: ${resumesToProcess.length}`);
 
     try {
         // --- 1. (可选) 解析 JD 用于前端展示 ---
@@ -278,7 +282,7 @@ export default async function handler(req, res) {
 
         // --- 2. 为每份简历调用 OpenAI 生成评估报告 ---
         console.log('[API /match - AI Report Mode] 步骤 1: 开始为每份简历生成 AI 评估报告...');
-        const matchesPromises = resumes.map(async (resume) => {
+        const matchesPromises = resumesToProcess.map(async (resume) => {
             console.log(`[API /match - AI Report Mode] 正在处理简历: ${resume.name} (ID: ${resume.id})`);
             const resumePlaceholders = formatResumeForPrompt(resume);
             let finalPrompt = AI_HR_REPORT_PROMPT_TEMPLATE;
@@ -318,7 +322,6 @@ export default async function handler(req, res) {
         });
 
         const calculatedMatches = await Promise.all(matchesPromises);
-        
         // --- 3. 排序结果 ---
         const sortedMatches = calculatedMatches
             .sort((a, b) => {
