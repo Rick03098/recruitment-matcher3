@@ -481,66 +481,66 @@ export default function RecruitmentMatcher() {
                 const restMatches = sortedMatches.slice(5);
                 return (
                   <>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
                       {topMatches.map((match, index) => {
                         const matchLevel = getMatchLevel(match.matchScore);
                         const initials = match.name ? match.name[0].toUpperCase() : 'U';
                         return (
                           <div
                             key={index}
-                            className="bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col h-full p-6 hover:shadow-2xl transition-shadow"
+                            className="bg-white rounded-2xl shadow-2xl p-8 mb-8 flex flex-col h-full border border-gray-100 hover:shadow-3xl transition-shadow"
                           >
                             {/* 顶部信息区 */}
-                            <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600">
+                            <div className="flex items-center justify-between mb-6">
+                              <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center text-3xl font-bold text-blue-600">
                                   {initials}
                                 </div>
                                 <div>
-                                  <div className="text-lg font-semibold text-gray-900">{match.name || 'N/A'}</div>
-                                  <div className="text-sm text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
+                                  <div className="text-xl font-semibold text-gray-900">{match.name || 'N/A'}</div>
+                                  <div className="text-base text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
                                 </div>
                               </div>
-                              <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
-                                <span className={`text-xl font-bold ${matchLevel.color}`}>{match.matchScore}%</span>
-                                <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
+                              <div className={`flex flex-col items-center justify-center w-20 h-20 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
+                                <span className={`text-2xl font-bold ${matchLevel.color}`}>{match.matchScore}%</span>
+                                <span className={`text-sm ${matchLevel.color}`}>{matchLevel.text}</span>
                               </div>
                             </div>
 
                             {/* AI一句话总结 */}
                             {match.matchDetails?.summary && (
-                              <div className="mb-2 text-gray-700 font-medium">{match.matchDetails.summary}</div>
+                              <div className="text-lg font-semibold text-blue-900 mb-3">{match.matchDetails.summary}</div>
                             )}
 
                             {/* 关键优势 */}
                             {match.matchDetails?.keyStrengths?.length > 0 && (
-                              <div className="mb-2">
-                                <div className="text-xs text-green-700 font-bold mb-1">关键优势</div>
-                                <ul className="list-disc list-inside text-sm text-green-800">
+                              <div className="mt-4">
+                                <div className="text-xs text-green-700 font-bold mb-2">关键优势</div>
+                                <div className="flex flex-wrap gap-2">
                                   {match.matchDetails.keyStrengths.map((item, i) => (
-                                    <li key={i}>{item}</li>
+                                    <span key={i} className="inline-block bg-green-100 text-green-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
                                   ))}
-                                </ul>
+                                </div>
                               </div>
                             )}
 
                             {/* 关键劣势 */}
                             {match.matchDetails?.keyConcerns?.length > 0 && (
-                              <div className="mb-2">
-                                <div className="text-xs text-red-700 font-bold mb-1">关键劣势</div>
-                                <ul className="list-disc list-inside text-sm text-red-800">
+                              <div className="mt-4">
+                                <div className="text-xs text-red-700 font-bold mb-2">关键劣势</div>
+                                <div className="flex flex-wrap gap-2">
                                   {match.matchDetails.keyConcerns.map((item, i) => (
-                                    <li key={i}>{item}</li>
+                                    <span key={i} className="inline-block bg-red-100 text-red-800 text-xs font-medium px-3 py-1 rounded-full shadow-sm">{item}</span>
                                   ))}
-                                </ul>
+                                </div>
                               </div>
                             )}
 
                             {/* 面试建议 */}
                             {match.matchDetails?.interviewFocusAreas?.length > 0 && (
-                              <div className="mb-2">
-                                <div className="text-xs text-blue-700 font-bold mb-1">面试建议</div>
-                                <ul className="list-disc list-inside text-sm text-blue-800">
+                              <div className="mt-4 border-t pt-4">
+                                <div className="text-xs text-blue-700 font-bold mb-2">面试建议</div>
+                                <ul className="list-disc list-inside text-blue-800 text-sm">
                                   {match.matchDetails.interviewFocusAreas.map((item, i) => (
                                     <li key={i}>{item}</li>
                                   ))}
@@ -549,7 +549,7 @@ export default function RecruitmentMatcher() {
                             )}
 
                             {/* 联系方式区 */}
-                            <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                            <div className="flex items-center gap-4 text-sm text-gray-500 mt-6 mb-2">
                               {match.email && (
                                 <span className="flex items-center gap-1">
                                   <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
