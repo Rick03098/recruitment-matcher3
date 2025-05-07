@@ -68,7 +68,7 @@ const AI_HR_REPORT_PROMPT_TEMPLATE = `
 
 JSON 对象必须包含以下键 (Key)：
 - **"overallFitScore"**: 整数 (0-100)。**基于以上所有维度的专业、整体评估**得出的最终匹配分数。请体现专业判断和区分度（例如：90+ = 顶尖匹配；75-89 = 优秀候选，强烈推荐；60-74 = 具备潜力，值得面试；40-59 = 部分相关，谨慎考虑；<40 = 基本不匹配）。
-- **"summary"**: 字符串。**一句话核心摘要**，总结候选人最主要的优劣势及推荐等级。例如：“技术基础扎实，学习潜力高，但缺乏 Go 经验，值得面试考察。”
+- **"summary"**: 字符串。**一句话核心摘要**，总结候选人最主要的优劣势及推荐等级。例如："技术基础扎实，学习潜力高，但缺乏 Go 经验，值得面试考察。"
 - **"potentialRating"**: 字符串。对候选人**成长潜力**的评级（例如："高", "中", "低"）。
 - **"startupFitRating"**: 字符串。对候选人**创业公司契合度**的评级（例如："高", "中", "低"）。
 - **"keyStrengths"**: 字符串数组。列出候选人**最关键的 3-4 个优势或匹配点**（结合技能、经验、潜力、契合度）。
@@ -138,6 +138,43 @@ function formatResumeForPrompt(resume) {
     }
 }
 
+// --- 新增：传统打分函数 ---
+function calcTraditionalScores(jd, resume) {
+  // 技能分
+  const jdSkills = (jd.requiredSkills || []).map(s => s.toLowerCase());
+  const jdBonus = (jd.preferredSkills || []).map(s => s.toLowerCase());
+  const resumeSkills = (resume.coreSkills || []).map(s => s.toLowerCase());
+  // 技能匹配
+  const matchedSkills = jdSkills.filter(skill => resumeSkills.includes(skill));
+  const missingSkills = jdSkills.filter(skill => !resumeSkills.includes(skill));
+  const skillScore = jdSkills.length > 0 ? Math.round((matchedSkills.length / jdSkills.length) * 100) : 0;
+  // 加分项
+  const matchedBonus = jdBonus.filter(skill => resumeSkills.includes(skill));
+  const bonusScore = jdBonus.length > 0 ? Math.round((matchedBonus.length / jdBonus.length) * 100) : 0;
+  // 经验分
+  let experienceScore = 100;
+  if (jd.yearsExperience && resume.totalYearsExperience) {
+    const jdYear = parseInt(jd.yearsExperience);
+    const resumeYear = parseInt(resume.totalYearsExperience);
+    if (!isNaN(jdYear) && !isNaN(resumeYear)) {
+      if (resumeYear >= jdYear) experienceScore = 100;
+      else if (resumeYear >= jdYear - 1) experienceScore = 80;
+      else if (resumeYear >= jdYear - 2) experienceScore = 60;
+      else experienceScore = 30;
+    }
+  }
+  // 学历分
+  let educationScore = 100;
+  if (jd.educationLevel && resume.educationDetails?.degree) {
+    const eduMap = { '博士': 4, '硕士': 3, '本科': 2, '大专': 1 };
+    const jdEdu = eduMap[jd.educationLevel] || 0;
+    const resumeEdu = eduMap[resume.educationDetails.degree] || 0;
+    if (resumeEdu >= jdEdu) educationScore = 100;
+    else if (resumeEdu === jdEdu - 1) educationScore = 70;
+    else educationScore = 40;
+  }
+  return { skillScore, bonusScore, experienceScore, educationScore, matchedSkills, missingSkills, matchedBonus };
+}
 
 // --- API 主处理函数 ---
 export default async function handler(req, res) {
@@ -174,6 +211,7 @@ export default async function handler(req, res) {
             }
 
             let aiReport = null; // 用于存储 AI 返回的报告对象
+            let aiScore = 0;
             try {
                 const completion = await openai.chat.completions.create({
                     model: "gpt-4o-mini", // 尝试更新的模型，可能效果更好或更快/更便宜
@@ -187,6 +225,7 @@ export default async function handler(req, res) {
 
                 const responseContent = completion.choices[0]?.message?.content;
                 aiReport = parseAndValidateReport(responseContent); // 解析并验证 JSON 结构
+                aiScore = aiReport?.overallFitScore || 0;
 
                 if (!aiReport) {
                     console.error(`[API /match - AI Report Mode] 简历 ${resume.name} 的 AI 评估报告无效或解析失败。`);
@@ -210,37 +249,38 @@ export default async function handler(req, res) {
                 };
             }
 
+            // --- 新增：传统打分 ---
+            const { skillScore, bonusScore, experienceScore, educationScore, matchedSkills, missingSkills, matchedBonus } = calcTraditionalScores(parsedJobRequirements, resume);
+            // --- 综合分数加权 ---
+            const totalScore = Math.round(
+                skillScore * 0.4 +
+                bonusScore * 0.1 +
+                experienceScore * 0.2 +
+                educationScore * 0.1 +
+                aiScore * 0.2
+            );
+
             // --- 组合最终结果 ---
             // 将 AI 报告的主要字段放入 matchDetails
             return {
                 ...resume, // 保留原始简历信息
-                matchScore: aiReport.overallFitScore, // 使用 AI 给出的总分
-                matchDetails: {
-                    // 直接使用 AI 报告的字段
-                    summary: aiReport.summary,
-                    potentialRating: aiReport.potentialRating,
-                    startupFitRating: aiReport.startupFitRating,
-                    keyStrengths: aiReport.keyStrengths,
-                    keyConcerns: aiReport.keyConcerns,
-                    interviewFocusAreas: aiReport.interviewFocusAreas,
-                    // 保留旧字段的引用（值现在来自AI报告）
-                    reasoning: aiReport.summary, // 或可以用更详细的 reasoning (如果prompt要求)
-                    analysis: aiReport.summary, // 让 analysis 等于 AI 的 summary
-                    // 以下字段意义不大，但为了兼容前端可能暂时保留或设为空
-                    matchedSkills: aiReport.keyStrengths.filter(s => s.toLowerCase().includes('skill') || s.toLowerCase().includes('技能')),
-                    missingRequiredSkills: aiReport.keyConcerns.filter(w => w.toLowerCase().includes('skill') || w.toLowerCase().includes('技能') || w.toLowerCase().includes('经验')),
-                    skillScore: null, // 不再单独计算
-                    experienceScore: null,
-                    educationScore: null,
-                    bonusScore: 0,
-                }
+                matchScore: totalScore, // 使用 AI 给出的总分
+                skillScore,
+                bonusScore,
+                experienceScore,
+                educationScore,
+                aiScore,
+                matchDetails: aiReport,
+                matchingSkills: matchedSkills,
+                missingSkills: missingSkills,
+                matchingBonus: matchedBonus
             };
         });
 
         const calculatedMatches = await Promise.all(matchesPromises);
 
         // --- 3. 排序结果 ---
-        const sortedMatches = calculatedMatches.sort((a, b) => b.matchScore - a.matchScore);
+        const sortedMatches = calculatedMatches.sort((a, b) => b.matchScore - a.matchScore).slice(0, 6);
         console.log(`[API /match - AI Report Mode] AI 报告生成完成，生成 ${sortedMatches.length} 条结果。`);
 
         // --- 4. 返回响应 ---
