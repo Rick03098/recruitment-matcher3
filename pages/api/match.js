@@ -282,7 +282,7 @@ export default async function handler(req, res) {
 
         // --- 2. 为每份简历调用 OpenAI 生成评估报告 ---
         console.log('[API /match - AI Report Mode] 步骤 1: 开始为每份简历生成 AI 评估报告...');
-        const matchesPromises = resumesToProcess.map(async (resume) => {
+        const matchesPromises = resumes.map(async (resume) => {
             console.log(`[API /match - AI Report Mode] 正在处理简历: ${resume.name} (ID: ${resume.id})`);
             const resumePlaceholders = formatResumeForPrompt(resume);
             let finalPrompt = AI_HR_REPORT_PROMPT_TEMPLATE;
@@ -322,24 +322,10 @@ export default async function handler(req, res) {
         });
 
         const calculatedMatches = await Promise.all(matchesPromises);
-        // --- 3. 排序结果 ---
+        // 按分数排序，只返回前10名
         const sortedMatches = calculatedMatches
-            .sort((a, b) => {
-                // 首先按分数排序
-                const scoreDiff = b.matchScore - a.matchScore;
-                if (Math.abs(scoreDiff) > 5) return scoreDiff;
-                // 分数接近时，考虑其他因素
-                const aHasKeySkills = a.matchDetails?.keyStrengths?.some(s => 
-                    parsedJobRequirements?.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
-                );
-                const bHasKeySkills = b.matchDetails?.keyStrengths?.some(s => 
-                    parsedJobRequirements?.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
-                );
-                if (aHasKeySkills && !bHasKeySkills) return -1;
-                if (!aHasKeySkills && bHasKeySkills) return 1;
-                return 0;
-            })
-            .slice(0, 6);
+            .sort((a, b) => b.matchScore - a.matchScore)
+            .slice(0, 10);
 
         return res.status(200).json({
             matches: sortedMatches,
