@@ -14,6 +14,19 @@ const apiRoute = nextConnect({
   },
 });
 
+// 只允许POST
+apiRoute.use((req, res, next) => {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, message: '仅支持POST方法' });
+  }
+  next();
+});
+
+// 捕获multer等中间件异常
+apiRoute.use((err, req, res, next) => {
+  res.status(500).json({ success: false, message: '文件上传或解析失败: ' + err.message });
+});
+
 apiRoute.use(upload.single('jobFile'));
 
 apiRoute.post(async (req, res) => {
