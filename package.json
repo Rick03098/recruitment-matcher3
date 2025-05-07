@@ -15,14 +15,14 @@
     "form-data": "^4.0.2",
     "formidable": "^3.5.4",
     "multer": "^1.4.5-lts.1",
-    "next": "12.3.1",
+    "next": "^15.3.2",
     "next-connect": "^1.0.0",
     "openai": "^4.97.0",
     "pdf-parse": "^1.1.1",
     "pdf2pic": "^3.1.4",
     "react": "18.2.0",
     "react-dom": "18.2.0",
-    "react-dropzone": "^14.2.3"
+    "react-dropzone": "^14.3.8"
   },
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.10",

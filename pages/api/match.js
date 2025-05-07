@@ -19,22 +19,30 @@ if (OPENAI_API_KEY && OPENAI_API_KEY.startsWith('sk-')) {
 const AI_HR_REPORT_PROMPT_TEMPLATE = `
 你是一名顶尖的技术招聘专家。请根据【职位描述】和【候选人简历】进行全面匹配评估，输出如下JSON：
 {
-  "overallFitScore": 0-100, // 综合所有维度的专业判断分数，90+极优，75-89优秀，60-74合格，40-59谨慎，<40不推荐
+  "overallFitScore": 0-100, // 综合所有维度的专业判断分数，90+极优，85-89特别优秀，81-84优秀，75-80可以试一试，60-74及格，<60不推荐
   "summary": "一句话总结分数理由，突出最关键的加分项和减分项",
   "keyStrengths": ["最重要的3-4个加分点，技能/经验/潜力/加分项等"],
   "keyConcerns": ["最重要的3-4个减分点，技能短板/经验不足/学历不符等"],
-  "interviewFocusAreas": ["2-3个面试建议，针对性考察候选人潜在不足或亮点"]
+  "interviewFocusAreas": ["2-3个面试建议，针对性考察候选人潜在不足或亮点"],
+  "detailedScores": {
+    "technicalSkills": 0-100, // 技术技能匹配度
+    "projectExperience": 0-100, // 项目经验相关性
+    "industryBackground": 0-100, // 行业背景匹配度
+    "softSkills": 0-100, // 软技能匹配度
+    "education": 0-100, // 教育背景匹配度
+    "careerProgression": 0-100 // 职业发展轨迹合理性
+  }
 }
 
 【打分要求】：
-- 分数要有明显区分度，不能都打高分。只有完全满足JD所有核心要求、且有突出亮点的候选人才能打90分以上。
-- 只要有1-2项核心技能/经验/学历不达标，分数不得高于75分。
-- 有明显短板或与JD要求有较大差距的，分数应低于60分。
+- 你必须对每一个维度的分数进行细致、专业的区分，不能机械平均或模糊打分。每一分都要有事实和内容支撑，体现出真实的差异。
+- 综合分(overallFitScore)不是简单加权或平均，而是你作为招聘专家对所有维度、加分项、减分项、潜力等的综合专业判断。每一分都要有区分度，不能出现大批候选人分数相同的情况。
 - summary要简明扼要说明分数理由，突出最关键的加分项和减分项。
 - keyStrengths/Concerns要具体、可操作，避免空泛描述。
-- 只输出JSON，不要多余解释。
+- detailedScores中的各项分数要基于具体事实给出，不能主观臆断。
+- 只输出严格的JSON对象，不要输出任何解释、注释或多余内容。
 
-【职位描述 (JD)】：
+【职位描述 (JD)】（请你全面学习、归纳、提炼JD中的所有关键信息，包括但不限于显式要求、隐含能力、行业常见能力。请务必提取并分条列出：职位名称（jobTitle）、必备技能（requiredSkills）、优先技能（preferredSkills）、工作经验要求（yearsExperience）、学历要求（educationLevel）、主要职责（responsibilities）、加分项（bonusSkills）、隐含要求（hiddenRequirements）、行业背景要求（industryBackground）、软技能要求（softSkills）等，字段缺失也要输出空数组或null，绝不遗漏任何内容，不要吞词）：
 {JD_TEXT}
 
 【候选人简历信息】：
@@ -99,7 +107,15 @@ function parseAndValidateReport(jsonString) {
             summary: "AI评估失败",
             keyStrengths: [],
             keyConcerns: ["AI返回内容缺失"],
-            interviewFocusAreas: []
+            interviewFocusAreas: [],
+            detailedScores: {
+                technicalSkills: 0,
+                projectExperience: 0,
+                industryBackground: 0,
+                softSkills: 0,
+                education: 0,
+                careerProgression: 0
+            }
         };
     }
     try {
@@ -108,17 +124,37 @@ function parseAndValidateReport(jsonString) {
             typeof report.summary !== 'string' ||
             !Array.isArray(report.keyStrengths) ||
             !Array.isArray(report.keyConcerns) ||
-            !Array.isArray(report.interviewFocusAreas)
+            !Array.isArray(report.interviewFocusAreas) ||
+            typeof report.detailedScores.technicalSkills !== 'number' ||
+            typeof report.detailedScores.projectExperience !== 'number' ||
+            typeof report.detailedScores.industryBackground !== 'number' ||
+            typeof report.detailedScores.softSkills !== 'number' ||
+            typeof report.detailedScores.education !== 'number' ||
+            typeof report.detailedScores.careerProgression !== 'number'
         ) {
             return {
                 overallFitScore: 0,
                 summary: "AI评估格式错误",
                 keyStrengths: [],
                 keyConcerns: ["AI返回内容格式错误"],
-                interviewFocusAreas: []
+                interviewFocusAreas: [],
+                detailedScores: {
+                    technicalSkills: 0,
+                    projectExperience: 0,
+                    industryBackground: 0,
+                    softSkills: 0,
+                    education: 0,
+                    careerProgression: 0
+                }
             };
         }
         report.overallFitScore = Math.max(0, Math.min(100, Math.round(report.overallFitScore)));
+        report.detailedScores.technicalSkills = Math.max(0, Math.min(100, Math.round(report.detailedScores.technicalSkills)));
+        report.detailedScores.projectExperience = Math.max(0, Math.min(100, Math.round(report.detailedScores.projectExperience)));
+        report.detailedScores.industryBackground = Math.max(0, Math.min(100, Math.round(report.detailedScores.industryBackground)));
+        report.detailedScores.softSkills = Math.max(0, Math.min(100, Math.round(report.detailedScores.softSkills)));
+        report.detailedScores.education = Math.max(0, Math.min(100, Math.round(report.detailedScores.education)));
+        report.detailedScores.careerProgression = Math.max(0, Math.min(100, Math.round(report.detailedScores.careerProgression)));
         return report;
     } catch (error) {
         return {
@@ -126,7 +162,15 @@ function parseAndValidateReport(jsonString) {
             summary: "AI评估解析异常",
             keyStrengths: [],
             keyConcerns: ["AI返回内容无法解析"],
-            interviewFocusAreas: []
+            interviewFocusAreas: [],
+            detailedScores: {
+                technicalSkills: 0,
+                projectExperience: 0,
+                industryBackground: 0,
+                softSkills: 0,
+                education: 0,
+                careerProgression: 0
+            }
         };
     }
 }
@@ -175,7 +219,7 @@ async function callOpenAIWithRetry(prompt, maxRetries = 3) {
     for (let i = 0; i < maxRetries; i++) {
         try {
             const completion = await openai.chat.completions.create({
-                model: "gpt-4o-mini",
+                model: "gpt-4o-mini", // 切换为gpt-4o-mini
                 messages: [{ role: "user", content: prompt }],
                 temperature: 0.3,
                 response_format: { type: "json_object" },
@@ -260,35 +304,76 @@ export default async function handler(req, res) {
     if (req.method !== 'POST') { /* ... 方法检查 ... */ }
     if (!openai) { /* ... OpenAI 客户端检查 ... */ }
 
-    const { jobDescription, resumes = [] } = req.body;
-    if (!jobDescription || jobDescription.trim().length < 20) { /* ... JD 检查 ... */ }
-    if (!Array.isArray(resumes) || resumes.length === 0) { /* ... 简历检查 ... */ }
+    const { jobDescription, resumes = [], scoreWeights } = req.body;
+    
+    // 验证权重
+    const defaultWeights = {
+        technicalSkills: 30,
+        projectExperience: 25,
+        industryBackground: 15,
+        softSkills: 10,
+        education: 10,
+        careerProgression: 10
+    };
+
+    const weights = scoreWeights || defaultWeights;
+    
+    // 确保权重总和为100
+    const totalWeight = Object.values(weights).reduce((sum, weight) => sum + weight, 0);
+    if (totalWeight !== 100) {
+        return res.status(400).json({ 
+            error: '权重总和必须为100%',
+            details: `当前权重总和: ${totalWeight}%`
+        });
+    }
+
+    // 兼容结构化JD和字符串JD
+    let jdText = '';
+    if (typeof jobDescription === 'string') {
+      jdText = jobDescription;
+    } else if (typeof jobDescription === 'object' && jobDescription !== null) {
+      jdText = [
+        jobDescription.jobTitle,
+        ...(jobDescription.requiredSkills || []),
+        ...(jobDescription.preferredSkills || []),
+        jobDescription.yearsOfExperience,
+        jobDescription.educationLevel,
+        ...(jobDescription.responsibilities || [])
+      ].filter(Boolean).join('；');
+    } else {
+      jdText = '';
+    }
+
+    if (!jdText || jdText.trim().length < 20) {
+      return res.status(400).json({ error: '职位描述内容不足' });
+    }
+    if (!Array.isArray(resumes) || resumes.length === 0) {
+      return res.status(400).json({ error: '简历列表为空' });
+    }
 
     // 只处理前10份简历，防止限流和超时
-    const BATCH_SIZE = 10;
-    const resumesToProcess = resumes.slice(0, BATCH_SIZE);
+    const resumesToProcess = resumes; // 一次处理全部简历
 
-    console.log(`[API /match - AI Report Mode] 收到请求，JD 长度: ${jobDescription.length}, 简历数量: ${resumesToProcess.length}`);
+    console.log(`[API /match - AI Report Mode] 收到请求，JD 长度: ${jdText.length}, 简历数量: ${resumesToProcess.length}`);
 
     try {
         // --- 1. (可选) 解析 JD 用于前端展示 ---
         let parsedJobRequirements = null;
         try {
-             parsedJobRequirements = await parseJobDescriptionWithOpenAI(jobDescription);
+             parsedJobRequirements = await parseJobDescriptionWithOpenAI(jdText);
              console.log('[API /match - AI Report Mode] OpenAI 解析 JD 成功 (用于前端展示)。');
-        } catch (jdParseError) { /* ... 记录警告 ... */
+        } catch (jdParseError) {
             console.warn('[API /match - AI Report Mode] 解析 JD 时出错 (非阻塞):', jdParseError.message);
             parsedJobRequirements = { jobTitle: '解析失败', requiredSkills: [], preferredSkills: [], yearsExperience: 'N/A', educationLevel: 'N/A', responsibilitiesKeywords: [] };
         }
 
-
         // --- 2. 为每份简历调用 OpenAI 生成评估报告 ---
         console.log('[API /match - AI Report Mode] 步骤 1: 开始为每份简历生成 AI 评估报告...');
-        const matchesPromises = resumes.map(async (resume) => {
+        const matchesPromises = resumesToProcess.map(async (resume) => {
             console.log(`[API /match - AI Report Mode] 正在处理简历: ${resume.name} (ID: ${resume.id})`);
             const resumePlaceholders = formatResumeForPrompt(resume);
             let finalPrompt = AI_HR_REPORT_PROMPT_TEMPLATE;
-            finalPrompt = finalPrompt.replace('{JD_TEXT}', jobDescription);
+            finalPrompt = finalPrompt.replace('{JD_TEXT}', jdText);
             for (const key in resumePlaceholders) {
                 finalPrompt = finalPrompt.replace(`{${key}}`, resumePlaceholders[key] || 'N/A');
             }
@@ -296,24 +381,33 @@ export default async function handler(req, res) {
             let aiReport = null;
             try {
                 const responseContent = await callOpenAIWithRetry(finalPrompt, 3);
+                console.log('[AI原始返回内容]', responseContent);
                 aiReport = parseAndValidateReport(responseContent);
+                console.log('[AI解析后报告]', aiReport);
             } catch (error) {
                 aiReport = {
                     overallFitScore: 0,
                     summary: "AI评估异常",
                     keyStrengths: [],
                     keyConcerns: ["AI评估API调用失败"],
-                    interviewFocusAreas: []
+                    interviewFocusAreas: [],
+                    detailedScores: {
+                        technicalSkills: 0,
+                        projectExperience: 0,
+                        industryBackground: 0,
+                        softSkills: 0,
+                        education: 0,
+                        careerProgression: 0
+                    }
                 };
             }
-            if (!aiReport) {
-                aiReport = {
-                    overallFitScore: 0,
-                    summary: "AI评估失败",
-                    keyStrengths: [],
-                    keyConcerns: ["AI评估返回无效"],
-                    interviewFocusAreas: []
-                };
+
+            // 计算加权分数
+            if (aiReport && aiReport.detailedScores) {
+                const weightedScore = Object.keys(weights).reduce((total, dimension) => {
+                    return total + (aiReport.detailedScores[dimension] * weights[dimension] / 100);
+                }, 0);
+                aiReport.overallFitScore = Math.round(weightedScore);
             }
 
             return {
@@ -324,10 +418,9 @@ export default async function handler(req, res) {
         });
 
         const calculatedMatches = await Promise.all(matchesPromises);
-        // 按分数排序，只返回前10名
+        // 按分数排序，返回全部候选人（不再截断）
         const sortedMatches = calculatedMatches
-            .sort((a, b) => b.matchScore - a.matchScore)
-            .slice(0, 10);
+            .sort((a, b) => b.matchScore - a.matchScore);
 
         return res.status(200).json({
             matches: sortedMatches,

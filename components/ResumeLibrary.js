@@ -1,7 +1,8 @@
 // components/ResumeLibrary.js
-import { useState, Fragment } from 'react'; // Fragment 用于包裹多个元素
+import { useState, Fragment, useMemo } from 'react'; // Fragment 用于包裹多个元素
 import BatchImportModal from './BatchimportModal'; // 批量导入功能 (确保文件名大小写正确)
 import ResumeDetailModal from './ResumeDetailModal'; // 我们将创建这个组件用于显示详情
+import BlueWaveLogoLoader from './BlueWaveLogoLoader'; // 导入 BlueWaveLogoLoader 组件
 
 // 简单的日期格式化函数 (可以替换为更强大的库如 date-fns)
 function formatDate(dateString) { // <--- 添加了缺失的 {
@@ -34,6 +35,38 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
   const [importSuccess, setImportSuccess] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [selectedResume, setSelectedResume] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 搜索过滤逻辑
+  const filteredResumes = useMemo(() => {
+    if (!searchQuery.trim()) return resumes;
+    
+    const query = searchQuery.toLowerCase().trim();
+    return resumes?.filter(resume => {
+      // 搜索姓名
+      if (resume.name?.toLowerCase().includes(query)) return true;
+      // 搜索邮箱
+      if (resume.contact?.email?.toLowerCase().includes(query)) return true;
+      // 搜索职位
+      if (resume.title?.toLowerCase().includes(query)) return true;
+      // 搜索技能
+      if (Array.isArray(resume.coreSkills)) {
+        if (resume.coreSkills.some(skill => skill.toLowerCase().includes(query))) return true;
+      }
+      // 搜索教育背景
+      if (resume.education?.some(edu => 
+        edu.school?.toLowerCase().includes(query) || 
+        edu.major?.toLowerCase().includes(query)
+      )) return true;
+      // 搜索工作经验
+      if (resume.experience?.some(exp => 
+        exp.company?.toLowerCase().includes(query) || 
+        exp.position?.toLowerCase().includes(query)
+      )) return true;
+      
+      return false;
+    }) || [];
+  }, [resumes, searchQuery]);
 
   const handleImportSuccess = (importedResults) => {
     setImportSuccess(`成功导入 ${importedResults.length} 个简历`);
@@ -53,7 +86,7 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
         <div>
           <h2 className="text-2xl font-bold text-gray-900">简历库</h2>
           <p className="mt-1 text-sm text-gray-500">
-            共 {resumes?.length || 0} 份简历
+            共 {filteredResumes?.length || 0} 份简历
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -62,9 +95,6 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
             disabled={isLoading}
             className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
           >
-            <svg className={`-ml-1 mr-2 h-5 w-5 ${isLoading ? 'animate-spin' : ''}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
             {isLoading ? '刷新中...' : '刷新列表'}
           </button>
           <button
@@ -88,6 +118,22 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
             </button>
           )}
         </div>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+          <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+          </svg>
+        </div>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="搜索姓名、技能、公司、学校..."
+          className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+        />
       </div>
 
       {/* 状态提示 */}
@@ -122,18 +168,13 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
       )}
 
       {/* 加载状态 */}
-      {isLoading && (
-        <div className="flex flex-col items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-          <p className="mt-4 text-sm text-gray-500">正在加载简历库...</p>
-        </div>
-      )}
-
+      {/* 已移除内部加载动画，由父组件统一控制 */}
+      
       {/* 简历列表 */}
       {!isLoading && (
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {resumes && resumes.length > 0 ? (
-            resumes.map((resume) => (
+          {filteredResumes && filteredResumes.length > 0 ? (
+            filteredResumes.map((resume) => (
               <div
                 key={resume?.id || JSON.stringify(resume)}
                 className="bg-white overflow-hidden shadow rounded-lg hover:shadow-md transition-shadow duration-200"
@@ -186,8 +227,12 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, on
               <svg className="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
               </svg>
-              <h3 className="mt-2 text-sm font-medium text-gray-900">暂无简历</h3>
-              <p className="mt-1 text-sm text-gray-500">开始上传简历以建立您的简历库。</p>
+              <h3 className="mt-2 text-sm font-medium text-gray-900">
+                {searchQuery ? '没有找到匹配的简历' : '暂无简历'}
+              </h3>
+              <p className="mt-1 text-sm text-gray-500">
+                {searchQuery ? '尝试使用其他关键词搜索' : '开始上传简历以建立您的简历库。'}
+              </p>
             </div>
           )}
         </div>

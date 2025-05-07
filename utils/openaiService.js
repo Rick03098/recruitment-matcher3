@@ -140,18 +140,22 @@ export async function parseJobDescriptionWithOpenAI(text) {
       };
     }
 
-    const prompt = `请从以下职位描述中提取关键信息，并以JSON格式返回。如果某项信息不存在，请将对应字段设为null：
+    // 强化Prompt，要求所有字段且只返回JSON
+    const prompt = `请从以下职位描述中提取关键信息，只返回JSON对象，不要有任何解释或前后缀。JSON必须包含以下字段：
+- jobTitle: 职位名称（string/null）
+- requiredSkills: 必备技能数组（string[]）
+- preferredSkills: 优先技能数组（string[]）
+- responsibilities: 主要职责数组（string[]）
+- bonusSkills: 加分项数组（string[]）
+- hiddenRequirements: 隐含要求数组（string[]）
+- yearsExperience: 工作经验要求（string/null）
+- educationLevel: 学历要求（string/null）
 
-职位名称（jobTitle）：
-必需技能（requiredSkills）：数组格式
-优先技能（preferredSkills）：数组格式
-工作经验要求（yearsOfExperience）：数字
-学历要求（educationLevel）：字符串
+如果某项信息未提及，返回空数组或null。只返回JSON，不要markdown、代码块或多余文字。
 
 职位描述：
 ${text}
-
-请确保返回的是有效的JSON格式，包含上述所有字段。`;
+`;
 
     const response = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
@@ -165,36 +169,22 @@ ${text}
           content: prompt
         }
       ],
-      temperature: 0.3,
-      max_tokens: 1000,
+      temperature: 0.2,
+      max_tokens: 1200,
     });
 
     if (!response.choices || !response.choices[0] || !response.choices[0].message) {
       throw new Error('OpenAI响应格式无效');
     }
 
-    const content = response.choices[0].message.content;
-    
-    try {
-      const parsedData = JSON.parse(content);
-      
-      // 验证返回的数据结构
-      const requiredFields = ['jobTitle', 'requiredSkills', 'preferredSkills', 'yearsOfExperience', 'educationLevel'];
-      const missingFields = requiredFields.filter(field => !(field in parsedData));
-      
-      if (missingFields.length > 0) {
-        return {
-          success: false,
-          error: `返回数据缺少必要字段: ${missingFields.join(', ')}`,
-          data: parsedData
-        };
-      }
+    let content = response.choices[0].message.content;
+    // 容错：尝试用正则提取第一个JSON块
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) content = jsonMatch[0];
 
-      return {
-        success: true,
-        error: null,
-        data: parsedData
-      };
+    let parsedData;
+    try {
+      parsedData = JSON.parse(content);
     } catch (parseError) {
       console.error('JSON解析错误:', parseError);
       return {
@@ -203,6 +193,24 @@ ${text}
         data: null
       };
     }
+
+    // 自动补全所有字段，保证结构化结果字段齐全
+    const fullResult = {
+      jobTitle: parsedData.jobTitle || null,
+      requiredSkills: Array.isArray(parsedData.requiredSkills) ? parsedData.requiredSkills : [],
+      preferredSkills: Array.isArray(parsedData.preferredSkills) ? parsedData.preferredSkills : [],
+      responsibilities: Array.isArray(parsedData.responsibilities) ? parsedData.responsibilities : [],
+      bonusSkills: Array.isArray(parsedData.bonusSkills) ? parsedData.bonusSkills : [],
+      hiddenRequirements: Array.isArray(parsedData.hiddenRequirements) ? parsedData.hiddenRequirements : [],
+      yearsExperience: parsedData.yearsExperience || null,
+      educationLevel: parsedData.educationLevel || null
+    };
+
+    return {
+      success: true,
+      error: null,
+      data: fullResult
+    };
   } catch (error) {
     console.error('OpenAI API调用错误:', error);
     return {
