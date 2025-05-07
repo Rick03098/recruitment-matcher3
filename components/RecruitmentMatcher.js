@@ -140,47 +140,20 @@ export default function RecruitmentMatcher() {
         });
       }
 
-      const data = await response.json();
+      const result = await response.json();
 
-      if (!response.ok) {
-        throw new Error(data.message || '文件处理失败');
-      }
-
-      if (!data.success) {
-        throw new Error(data.message || '文件处理失败');
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || '文件处理失败');
       }
 
       // 更新职位描述
-      setJobDescription(data.text || '');
+      if (result.data && result.data.text) {
+        setJobDescription(result.data.text);
+      }
       
       // 如果有结构化数据，更新相关字段
-      if (data.structuredData) {
-        const { jobTitle, requiredSkills, preferredSkills, yearsOfExperience, educationLevel } = data.structuredData;
-        
-        // 更新职位标题
-        if (jobTitle) {
-          setJobRequirements(data.structuredData);
-        }
-        
-        // 更新技能要求
-        if (requiredSkills && requiredSkills.length > 0) {
-          setJobRequirements(data.structuredData);
-        }
-        
-        // 更新优先技能
-        if (preferredSkills && preferredSkills.length > 0) {
-          setJobRequirements(data.structuredData);
-        }
-        
-        // 更新工作经验
-        if (yearsOfExperience) {
-          setJobRequirements(data.structuredData);
-        }
-        
-        // 更新教育程度
-        if (educationLevel) {
-          setJobRequirements(data.structuredData);
-        }
+      if (result.data && result.data.structuredData) {
+        setJobRequirements(result.data.structuredData);
       }
 
       // 显示成功消息
