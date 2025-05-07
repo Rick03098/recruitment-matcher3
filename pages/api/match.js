@@ -90,29 +90,42 @@ function formatResumeForPrompt(resume) {
 }
 
 // --- 辅助函数：解析和验证 OpenAI 返回的报告 JSON ---
- function parseAndValidateReport(jsonString) {
-    if (!jsonString) return null;
+function parseAndValidateReport(jsonString) {
+    if (!jsonString) {
+        return {
+            overallFitScore: 0,
+            summary: "AI评估失败",
+            keyStrengths: [],
+            keyConcerns: ["AI返回内容缺失"],
+            interviewFocusAreas: []
+        };
+    }
     try {
         const report = JSON.parse(jsonString);
-        // 检查核心字段是否存在且类型基本正确
         if (typeof report.overallFitScore !== 'number' ||
             typeof report.summary !== 'string' ||
-            typeof report.potentialRating !== 'string' ||
-            typeof report.startupFitRating !== 'string' ||
             !Array.isArray(report.keyStrengths) ||
             !Array.isArray(report.keyConcerns) ||
             !Array.isArray(report.interviewFocusAreas)
         ) {
-            console.warn("[parseAndValidateReport] AI 返回的报告 JSON 缺少必需字段或类型错误:", report);
-            return null;
+            return {
+                overallFitScore: 0,
+                summary: "AI评估格式错误",
+                keyStrengths: [],
+                keyConcerns: ["AI返回内容格式错误"],
+                interviewFocusAreas: []
+            };
         }
-        // 分数修正
         report.overallFitScore = Math.max(0, Math.min(100, Math.round(report.overallFitScore)));
         return report;
     } catch (error) {
-        console.error("[parseAndValidateReport] 解析 AI 报告 JSON 失败:", error);
-        console.error("[parseAndValidateReport] 原始字符串:", jsonString);
-        return null;
+        return {
+            overallFitScore: 0,
+            summary: "AI评估解析异常",
+            keyStrengths: [],
+            keyConcerns: ["AI返回内容无法解析"],
+            interviewFocusAreas: []
+        };
     }
 }
 
@@ -154,27 +167,31 @@ function calcTraditionalScores(jd, resume) {
   return { skillScore, bonusScore, experienceScore, educationScore, matchedSkills, missingSkills, matchedBonus };
 }
 
-// 添加重试机制
+// --- OpenAI 限流重试 ---
 async function callOpenAIWithRetry(prompt, maxRetries = 3) {
+    let lastError = null;
     for (let i = 0; i < maxRetries; i++) {
         try {
             const completion = await openai.chat.completions.create({
-                model: "gpt-4-turbo-preview", // 使用更稳定的模型
+                model: "gpt-4o-mini",
                 messages: [{ role: "user", content: prompt }],
                 temperature: 0.3,
                 response_format: { type: "json_object" },
-                max_tokens: 1000
+                max_tokens: 700,
             });
             return completion.choices[0]?.message?.content;
         } catch (error) {
+            lastError = error;
+            // 限流自动等待重试
             if (error.code === 'rate_limit_exceeded' && i < maxRetries - 1) {
                 const retryAfter = parseInt(error.headers?.['retry-after'] || '1');
-                await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+                await new Promise(resolve => setTimeout(resolve, (retryAfter || 1) * 1000));
                 continue;
             }
-            throw error;
         }
     }
+    // 多次重试后仍失败，返回 null
+    return null;
 }
 
 // 优化评分验证函数
@@ -272,31 +289,24 @@ export default async function handler(req, res) {
 
             let aiReport = null;
             try {
-                const responseContent = await callOpenAIWithRetry(finalPrompt);
+                const responseContent = await callOpenAIWithRetry(finalPrompt, 3);
                 aiReport = parseAndValidateReport(responseContent);
-                
-                if (aiReport) {
-                    // 应用分数验证和调整
-                    const scoreResult = validateAndNormalizeScore(
-                        aiReport.overallFitScore,
-                        resume,
-                        parsedJobRequirements
-                    );
-                    
-                    aiReport.overallFitScore = scoreResult.score;
-                    aiReport.scoreDetails = {
-                        originalScore: scoreResult.originalScore,
-                        adjustments: scoreResult.adjustments
-                    };
-                }
             } catch (error) {
-                console.error(`[API /match] 处理简历 ${resume.name} 时出错:`, error);
                 aiReport = {
                     overallFitScore: 0,
-                    summary: `评估失败: ${error.message}`,
+                    summary: "AI评估异常",
                     keyStrengths: [],
-                    keyConcerns: ["AI评估失败"],
-                    interviewFocusAreas: ["需要人工评估"]
+                    keyConcerns: ["AI评估API调用失败"],
+                    interviewFocusAreas: []
+                };
+            }
+            if (!aiReport) {
+                aiReport = {
+                    overallFitScore: 0,
+                    summary: "AI评估失败",
+                    keyStrengths: [],
+                    keyConcerns: ["AI评估返回无效"],
+                    interviewFocusAreas: []
                 };
             }
 

@@ -1,146 +1,124 @@
-import formidable from 'formidable';
+import nextConnect from 'next-connect';
+import multer from 'multer';
 import fs from 'fs';
-import { fromPath } from 'pdf2pic';
-import { getImageBase64, visionExtractTextFromImage } from '../../utils/openaiVision';
+import { fileParser } from '../../utils/fileParser';
+import { parseJobDescriptionWithOpenAI } from '../../utils/openaiService';
 
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      success: false,
-      error: '只支持POST请求',
-      data: null
-    });
-  }
-
-  let tempFilePath = null;
-
-  try {
-    // 解析文件
-    const form = formidable({ keepExtensions: true, maxFileSize: 10 * 1024 * 1024 });
-    const [fields, files] = await new Promise((resolve, reject) => {
-      form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        resolve([fields, files]);
-      });
-    });
-    const fileRaw = files.jobFile;
-    const file = Array.isArray(fileRaw) ? fileRaw[0] : fileRaw;
-    if (!file) {
-      return res.status(400).json({ success: false, error: '未找到上传的文件', data: null });
+// 配置 multer
+const upload = multer({
+    storage: multer.diskStorage({
+        destination: '/tmp',
+        filename: (req, file, cb) => {
+            const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+            cb(null, uniqueSuffix + '-' + file.originalname);
+        }
+    }),
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10MB
+    },
+    fileFilter: (req, file, cb) => {
+        const allowedTypes = [
+            'application/pdf',
+            'text/plain',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'image/jpeg',
+            'image/png'
+        ];
+        
+        if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+        } else {
+            cb(new Error('不支持的文件类型。请上传 PDF、Word、TXT 或图片文件。'));
+        }
     }
-    let fileType = file.mimetype;
-    if (!fileType && file.originalFilename) {
-      const ext = file.originalFilename.split('.').pop().toLowerCase();
-      if (ext === 'pdf') fileType = 'application/pdf';
-      if (['jpg','jpeg','png','webp','gif'].includes(ext)) fileType = 'image/' + ext;
-    }
-    tempFilePath = file.filepath;
+});
 
+// 创建 API 路由
+const apiRoute = nextConnect({
+    onError(error, req, res) {
+        console.error('[API /parseJDFile] 错误:', error);
+        res.status(500).json({ 
+            error: error.message || '文件处理失败',
+            details: error.stack
+        });
+    },
+    onNoMatch(req, res) {
+        res.status(405).json({ error: `方法 ${req.method} 不允许` });
+    }
+});
+
+// 使用 multer 中间件
+apiRoute.use(upload.single('file'));
+
+// 处理文件上传和解析
+apiRoute.post(async (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ error: '未找到上传的文件' });
+    }
+
+    const filePath = req.file.path;
     let extractedText = '';
-    let visionRawResult = [];
+    let structuredData = null;
 
-    if (fileType === 'application/pdf') {
-      // PDF转图片，每页都发给OpenAI Vision
-      const pdf2pic = fromPath(tempFilePath, { density: 180, saveFilename: 'jd_page', savePath: '/tmp', format: 'jpeg', width: 1200, height: 1600 });
-      const totalPages = await getPdfPageCount(tempFilePath);
-      for (let i = 1; i <= totalPages; i++) {
-        const page = await pdf2pic(i);
-        const base64 = fs.readFileSync(page.path).toString('base64');
-        const visionRes = await visionExtractTextFromImage(base64, OPENAI_API_KEY);
-        visionRawResult.push(visionRes);
-        // 尝试从visionRes中提取文本
-        const text = extractTextFromVisionResponse(visionRes);
-        extractedText += text + '\n';
-        // 删除临时图片
-        fs.unlinkSync(page.path);
-      }
-    } else if (fileType.startsWith('image/')) {
-      // 图片直接发给OpenAI Vision
-      const base64 = await getImageBase64(tempFilePath);
-      const visionRes = await visionExtractTextFromImage(base64, OPENAI_API_KEY);
-      visionRawResult.push(visionRes);
-      extractedText = extractTextFromVisionResponse(visionRes);
-    } else {
-      return res.status(400).json({ success: false, error: '仅支持图片和PDF', data: null });
+    try {
+        // 1. 提取文本
+        extractedText = await fileParser.parse(filePath, req.file.mimetype);
+        
+        if (!extractedText.trim()) {
+            throw new Error('无法从文件中提取文本内容');
+        }
+
+        // 2. 使用 OpenAI 解析文本
+        try {
+            structuredData = await parseJobDescriptionWithOpenAI(extractedText);
+        } catch (aiError) {
+            console.warn('[API /parseJDFile] OpenAI 解析失败:', aiError);
+            structuredData = {
+                jobTitle: '解析失败',
+                requiredSkills: [],
+                preferredSkills: [],
+                yearsExperience: 'N/A',
+                educationLevel: 'N/A',
+                responsibilitiesKeywords: []
+            };
+        }
+
+        // 3. 返回结果
+        res.status(200).json({
+            success: true,
+            text: extractedText,
+            structuredData,
+            fileInfo: {
+                name: req.file.originalname,
+                size: req.file.size,
+                type: req.file.mimetype
+            }
+        });
+
+    } catch (error) {
+        console.error('[API /parseJDFile] 处理文件时出错:', error);
+        res.status(500).json({ 
+            error: `文件处理失败: ${error.message}`,
+            details: error.stack
+        });
+    } finally {
+        // 清理临时文件
+        try {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath);
+            }
+        } catch (cleanupError) {
+            console.warn('[API /parseJDFile] 清理临时文件失败:', cleanupError);
+        }
     }
+});
 
-    // 清理临时文件
-    try { if (tempFilePath && fs.existsSync(tempFilePath)) fs.unlinkSync(tempFilePath); } catch {}
+export default apiRoute;
 
-    // 再用OpenAI结构化分析
-    let structuredData = {};
-    if (extractedText.trim()) {
-      const structureRes = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${OPENAI_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: 'gpt-4o',
-          messages: [
-            { role: 'user', content: `请将以下职位描述文本结构化为JSON，字段包括：岗位(jobTitle)、必备技能(requiredSkills,数组)、优先技能(preferredSkills,数组)、经验(yearsExperience)、学历(educationLevel)。只返回JSON，不要多余解释。\n\n${extractedText}` }
-          ],
-          max_tokens: 1024
-        })
-      });
-      const structureJson = await structureRes.json();
-      try {
-        structuredData = JSON.parse(structureJson.choices[0].message.content);
-      } catch {
-        structuredData = {};
-      }
+// 禁用 body 解析，因为 multer 会处理它
+export const config = {
+    api: {
+        bodyParser: false
     }
-
-    // 返回前打印日志
-    console.log('【JD结构化数据】structuredData:', structuredData);
-    console.log('【OpenAI Vision原始返回】visionRawResult:', JSON.stringify(visionRawResult, null, 2));
-    return res.status(200).json({
-      success: true,
-      error: null,
-      data: {
-        text: extractedText,
-        structuredData,
-        file: {
-          name: file.originalFilename || file.name,
-          size: file.size,
-          type: fileType
-        },
-        visionRawResult
-      }
-    });
-  } catch (error) {
-    if (tempFilePath && fs.existsSync(tempFilePath)) {
-      try { fs.unlinkSync(tempFilePath); } catch {}
-    }
-    return res.status(500).json({ success: false, error: '文件处理失败: ' + error.message, data: null });
-  }
-}
-
-// 获取PDF页数
-function getPdfPageCount(pdfPath) {
-  const buffer = fs.readFileSync(pdfPath);
-  const text = buffer.toString('latin1');
-  const match = text.match(/\/Type\s*\/Page[^s]/g);
-  return match ? match.length : 1;
-}
-
-// 从OpenAI Vision响应中提取文本
-function extractTextFromVisionResponse(visionRes) {
-  try {
-    const contentArr = visionRes.choices[0].message.content;
-    if (typeof contentArr === 'string') return contentArr;
-    if (Array.isArray(contentArr)) return contentArr.map(x => x.text || '').join('\n');
-    return '';
-  } catch {
-    return '';
-  }
-} 
+}; 
