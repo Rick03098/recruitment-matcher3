@@ -268,6 +268,14 @@ export default function RecruitmentMatcher() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* 顶部LOGO+标题 */}
+      <header className="bg-white py-8 flex flex-col items-center">
+        <img src="/logo-miracleplus-bars.png" alt="奇绩Logo" className="h-16 w-auto mb-4" />
+        <h1 className="text-3xl font-bold text-gray-900 tracking-tight" style={{fontFamily: 'PingFang SC, Microsoft YaHei, Arial, sans-serif'}}>
+          奇绩校友招聘
+        </h1>
+      </header>
+
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
