@@ -279,9 +279,20 @@ export default function RecruitmentMatcher() {
       {/* 顶部导航栏 */}
       <nav className="bg-white shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
+          <div className="flex justify-between h-16 items-center">
             <div className="flex items-center">
-              <h1 className="text-xl font-semibold text-gray-900">简历匹配系统</h1>
+              {/* SVG LOGO */}
+              <svg width="130" height="60" viewBox="0 0 130 60" fill="none" xmlns="http://www.w3.org/2000/svg" style={{height: '40px', width: 'auto'}}>
+                <rect x="0"   y="0"  width="10" height="60" fill="#1680FF"/>
+                <rect x="15"  y="10" width="10" height="50" fill="#1680FF"/>
+                <rect x="30"  y="20" width="10" height="40" fill="#1680FF"/>
+                <rect x="45"  y="28" width="10" height="32" fill="#1680FF"/>
+                <rect x="60"  y="36" width="10" height="24" fill="#1680FF"/>
+                <rect x="75"  y="28" width="10" height="32" fill="#1680FF"/>
+                <rect x="90"  y="20" width="10" height="40" fill="#1680FF"/>
+                <rect x="105" y="10" width="10" height="50" fill="#1680FF"/>
+                <rect x="120" y="0"  width="10" height="60" fill="#1680FF"/>
+              </svg>
             </div>
             <div className="flex items-center space-x-4">
               <button
