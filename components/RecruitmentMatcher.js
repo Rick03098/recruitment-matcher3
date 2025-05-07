@@ -96,7 +96,7 @@ export default function RecruitmentMatcher() {
     const file = e.target.files[0];
     if (!file) return;
 
-    // 检查文件大小（10MB限制）
+    // 检查文件大小
     if (file.size > 10 * 1024 * 1024) {
       setError('文件大小不能超过10MB');
       return;
@@ -106,100 +106,48 @@ export default function RecruitmentMatcher() {
     const allowedTypes = [
       'application/pdf',
       'text/plain',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'image/png',
       'image/jpeg',
-      'image/webp',
-      'image/gif'
+      'image/png',
+      'image/gif',
+      'image/webp'
     ];
-
+    
     if (!allowedTypes.includes(file.type)) {
-      setError('不支持的文件类型。请上传PDF、Word、TXT或图片文件。');
+      setError('不支持的文件类型，请上传PDF、TXT或图片文件');
       return;
     }
 
     setJobFile(file);
     setError(null);
-    setIsUploadingJD(true);
 
     try {
       const formData = new FormData();
       formData.append('jobFile', file);
 
-      let response;
-      let result;
+      // 统一：无论图片还是PDF都只请求/api/parseJDFile
+      const response = await fetch('/api/parseJDFile', {
+        method: 'POST',
+        body: formData,
+      });
 
-      try {
-        if (file.type.startsWith('image/')) {
-          response = await fetch('/api/uploadAndParseJD', {
-            method: 'POST',
-            body: formData,
-          });
-        } else {
-          response = await fetch('/api/parseJDFile', {
-            method: 'POST',
-            body: formData,
-          });
-        }
-
-        // 检查响应状态
-        if (!response.ok) {
-          throw new Error(`HTTP错误: ${response.status}`);
-        }
-
-        // 尝试解析响应
-        const text = await response.text();
-        if (!text) {
-          throw new Error('服务器返回空响应');
-        }
-
-        try {
-          result = JSON.parse(text);
-        } catch (parseError) {
-          console.error('JSON解析错误:', parseError);
-          console.error('原始响应:', text);
-          throw new Error('服务器响应格式错误');
-        }
-
-        // 验证响应格式
-        if (typeof result !== 'object' || result === null) {
-          throw new Error('无效的响应格式');
-        }
-
-        if (!result.success) {
-          throw new Error(result.error || '文件处理失败');
-        }
-
-        // 更新职位描述
-        if (result.data && result.data.text) {
-          setJobDescription(result.data.text);
-        }
-        
-        // 如果有结构化数据，更新相关字段
-        if (result.data && result.data.structuredData) {
-          setJobRequirements(result.data.structuredData);
-        }
-
-        // 显示成功消息
-        setUploadResumeSuccess('文件上传并解析成功');
-        setTimeout(() => setUploadResumeSuccess(null), 3000);
-
-      } catch (fetchError) {
-        console.error('请求错误:', fetchError);
-        throw new Error(`请求失败: ${fetchError.message}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '文件上传失败');
       }
 
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || '文件处理失败');
+      }
+
+      setJobDescription(data.data.text || '');
+      if (data.data.structuredData) {
+        setJobRequirements(data.data.structuredData);
+      }
     } catch (error) {
       console.error('文件处理错误:', error);
-      setError(error.message || '文件处理失败，请重试');
-      setJobFile(null);
-      // 重置文件输入
-      if (e.target) {
-        e.target.value = '';
-      }
-    } finally {
-      setIsUploadingJD(false);
+      setError(error.message || '文件处理失败');
     }
   };
 
@@ -528,14 +476,14 @@ export default function RecruitmentMatcher() {
               {/* 匹配结果展示 */}
               {matches.length > 0 ? (() => {
                 // 按分数降序排序
-                const sortedMatches = [...matches].sort((a, b) => (b.score || 0) - (a.score || 0));
+                const sortedMatches = [...matches].sort((a, b) => (b.matchScore || 0) - (a.matchScore || 0));
                 const topMatches = sortedMatches.slice(0, 5);
                 const restMatches = sortedMatches.slice(5);
                 return (
                   <>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                       {topMatches.map((match, index) => {
-                        const matchLevel = getMatchLevel(match.score);
+                        const matchLevel = getMatchLevel(match.matchScore);
                         const initials = match.name ? match.name[0].toUpperCase() : 'U';
                         return (
                           <div
@@ -554,34 +502,51 @@ export default function RecruitmentMatcher() {
                                 </div>
                               </div>
                               <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
-                                <span className={`text-xl font-bold ${matchLevel.color}`}>{match.score}%</span>
+                                <span className={`text-xl font-bold ${matchLevel.color}`}>{match.matchScore}%</span>
                                 <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
                               </div>
                             </div>
 
-                            {/* 技能区 */}
-                            <div className="mb-4">
-                              <div className="mb-1 text-xs text-gray-500 font-medium">匹配技能</div>
-                              <div className="flex flex-wrap gap-2 mb-2">
-                                {match.matchingSkills && match.matchingSkills.length > 0 ? (
-                                  match.matchingSkills.map((skill, i) => (
-                                    <SkillTag key={i} type="match">{skill}</SkillTag>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-gray-400 italic">无</span>
-                                )}
+                            {/* AI一句话总结 */}
+                            {match.matchDetails?.summary && (
+                              <div className="mb-2 text-gray-700 font-medium">{match.matchDetails.summary}</div>
+                            )}
+
+                            {/* 关键优势 */}
+                            {match.matchDetails?.keyStrengths?.length > 0 && (
+                              <div className="mb-2">
+                                <div className="text-xs text-green-700 font-bold mb-1">关键优势</div>
+                                <ul className="list-disc list-inside text-sm text-green-800">
+                                  {match.matchDetails.keyStrengths.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
                               </div>
-                              <div className="mb-1 text-xs text-gray-500 font-medium">缺失技能</div>
-                              <div className="flex flex-wrap gap-2">
-                                {match.missingSkills && match.missingSkills.length > 0 ? (
-                                  match.missingSkills.map((skill, i) => (
-                                    <SkillTag key={i} type="missing">{skill}</SkillTag>
-                                  ))
-                                ) : (
-                                  <span className="text-xs text-gray-400 italic">无</span>
-                                )}
+                            )}
+
+                            {/* 关键劣势 */}
+                            {match.matchDetails?.keyConcerns?.length > 0 && (
+                              <div className="mb-2">
+                                <div className="text-xs text-red-700 font-bold mb-1">关键劣势</div>
+                                <ul className="list-disc list-inside text-sm text-red-800">
+                                  {match.matchDetails.keyConcerns.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
                               </div>
-                            </div>
+                            )}
+
+                            {/* 面试建议 */}
+                            {match.matchDetails?.interviewFocusAreas?.length > 0 && (
+                              <div className="mb-2">
+                                <div className="text-xs text-blue-700 font-bold mb-1">面试建议</div>
+                                <ul className="list-disc list-inside text-sm text-blue-800">
+                                  {match.matchDetails.interviewFocusAreas.map((item, i) => (
+                                    <li key={i}>{item}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
 
                             {/* 联系方式区 */}
                             <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
@@ -627,7 +592,7 @@ export default function RecruitmentMatcher() {
                     {showAllMatches && restMatches.length > 0 && (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
                         {restMatches.map((match, index) => {
-                          const matchLevel = getMatchLevel(match.score);
+                          const matchLevel = getMatchLevel(match.matchScore);
                           const initials = match.name ? match.name[0].toUpperCase() : 'U';
                           return (
                             <div
@@ -646,34 +611,51 @@ export default function RecruitmentMatcher() {
                                   </div>
                                 </div>
                                 <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
-                                  <span className={`text-xl font-bold ${matchLevel.color}`}>{match.score}%</span>
+                                  <span className={`text-xl font-bold ${matchLevel.color}`}>{match.matchScore}%</span>
                                   <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
                                 </div>
                               </div>
 
-                              {/* 技能区 */}
-                              <div className="mb-4">
-                                <div className="mb-1 text-xs text-gray-500 font-medium">匹配技能</div>
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                  {match.matchingSkills && match.matchingSkills.length > 0 ? (
-                                    match.matchingSkills.map((skill, i) => (
-                                      <SkillTag key={i} type="match">{skill}</SkillTag>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-gray-400 italic">无</span>
-                                  )}
+                              {/* AI一句话总结 */}
+                              {match.matchDetails?.summary && (
+                                <div className="mb-2 text-gray-700 font-medium">{match.matchDetails.summary}</div>
+                              )}
+
+                              {/* 关键优势 */}
+                              {match.matchDetails?.keyStrengths?.length > 0 && (
+                                <div className="mb-2">
+                                  <div className="text-xs text-green-700 font-bold mb-1">关键优势</div>
+                                  <ul className="list-disc list-inside text-sm text-green-800">
+                                    {match.matchDetails.keyStrengths.map((item, i) => (
+                                      <li key={i}>{item}</li>
+                                    ))}
+                                  </ul>
                                 </div>
-                                <div className="mb-1 text-xs text-gray-500 font-medium">缺失技能</div>
-                                <div className="flex flex-wrap gap-2">
-                                  {match.missingSkills && match.missingSkills.length > 0 ? (
-                                    match.missingSkills.map((skill, i) => (
-                                      <SkillTag key={i} type="missing">{skill}</SkillTag>
-                                    ))
-                                  ) : (
-                                    <span className="text-xs text-gray-400 italic">无</span>
-                                  )}
+                              )}
+
+                              {/* 关键劣势 */}
+                              {match.matchDetails?.keyConcerns?.length > 0 && (
+                                <div className="mb-2">
+                                  <div className="text-xs text-red-700 font-bold mb-1">关键劣势</div>
+                                  <ul className="list-disc list-inside text-sm text-red-800">
+                                    {match.matchDetails.keyConcerns.map((item, i) => (
+                                      <li key={i}>{item}</li>
+                                    ))}
+                                  </ul>
                                 </div>
-                              </div>
+                              )}
+
+                              {/* 面试建议 */}
+                              {match.matchDetails?.interviewFocusAreas?.length > 0 && (
+                                <div className="mb-2">
+                                  <div className="text-xs text-blue-700 font-bold mb-1">面试建议</div>
+                                  <ul className="list-disc list-inside text-sm text-blue-800">
+                                    {match.matchDetails.interviewFocusAreas.map((item, i) => (
+                                      <li key={i}>{item}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
 
                               {/* 联系方式区 */}
                               <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
