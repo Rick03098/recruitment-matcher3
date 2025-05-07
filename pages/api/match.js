@@ -319,24 +319,21 @@ export default async function handler(req, res) {
 
         const calculatedMatches = await Promise.all(matchesPromises);
         
-        // 优化排序逻辑
+        // --- 3. 排序结果 ---
         const sortedMatches = calculatedMatches
             .sort((a, b) => {
                 // 首先按分数排序
                 const scoreDiff = b.matchScore - a.matchScore;
                 if (Math.abs(scoreDiff) > 5) return scoreDiff;
-                
                 // 分数接近时，考虑其他因素
                 const aHasKeySkills = a.matchDetails?.keyStrengths?.some(s => 
-                    jd.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
+                    parsedJobRequirements?.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
                 );
                 const bHasKeySkills = b.matchDetails?.keyStrengths?.some(s => 
-                    jd.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
+                    parsedJobRequirements?.requiredSkills?.some(req => s.toLowerCase().includes(req.toLowerCase()))
                 );
-                
                 if (aHasKeySkills && !bHasKeySkills) return -1;
                 if (!aHasKeySkills && bHasKeySkills) return 1;
-                
                 return 0;
             })
             .slice(0, 6);
