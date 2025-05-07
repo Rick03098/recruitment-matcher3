@@ -409,6 +409,13 @@ export default function RecruitmentMatcher() {
               isLoading={isLoadingResumes}
               error={error}
               onRefresh={fetchResumes}
+              onStartMatching={() => {
+                setActiveTab('upload');
+                // 如果已经有职位描述，自动开始匹配
+                if (jobDescription.trim()) {
+                  matchResumes();
+                }
+              }}
             />
           )}
 

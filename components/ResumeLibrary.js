@@ -29,7 +29,7 @@ const SkillTag = ({ children }) => (
   </span>
 );
 
-export default function ResumeLibrary({ resumes, isLoading, error, onRefresh }) {
+export default function ResumeLibrary({ resumes, isLoading, error, onRefresh, onStartMatching }) {
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [importSuccess, setImportSuccess] = useState(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -76,6 +76,17 @@ export default function ResumeLibrary({ resumes, isLoading, error, onRefresh }) 
             </svg>
             批量导入
           </button>
+          {resumes && resumes.length > 0 && (
+            <button
+              onClick={onStartMatching}
+              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            >
+              <svg className="-ml-1 mr-2 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+              开始匹配
+            </button>
+          )}
         </div>
       </div>
 
