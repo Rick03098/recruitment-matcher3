@@ -100,7 +100,6 @@ export default function RecruitmentMatcher() {
      setJobDescription(''); // Clear text area when a new file is selected
      setJobRequirements(null); // Clear previous structured requirements
 
-
      // --- Basic File Validation (Client-Side) ---
      if (file.size > 10 * 1024 * 1024) { // 10MB limit
         setError('职位描述文件大小不能超过 10MB');
@@ -128,7 +127,6 @@ export default function RecruitmentMatcher() {
     setJobFile(file); // Set the file state for UI feedback
     setIsUploadingJD(true); // Set loading state
 
-    // --- Handle based on file type ---
     if (file.type === 'text/plain') {
         // Read TXT file directly in the browser
         const reader = new FileReader();
@@ -144,7 +142,6 @@ export default function RecruitmentMatcher() {
             e.target.value = ''; // Reset input
         };
         reader.readAsText(file);
-
     } else if (file.type.startsWith('image/')) {
         // --- Handle Image Upload ---
         console.log(`准备上传并解析图片文件: ${file.name}`);
@@ -185,7 +182,27 @@ export default function RecruitmentMatcher() {
             setIsUploadingJD(false); // Reset loading state
         }
         // --- Image Handling End ---
-
+    } else if (file.type === 'application/pdf') {
+        // 新增PDF自动提取
+        const formData = new FormData();
+        formData.append('jobFile', file);
+        try {
+            const response = await fetch('/api/parseJDFile', {
+                method: 'POST',
+                body: formData,
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.message || `PDF解析失败 (状态 ${response.status})`);
+            }
+            setJobDescription(result.text || '');
+        } catch (err) {
+            setError(`PDF解析失败: ${err.message}`);
+            setJobFile(null);
+            e.target.value = '';
+        } finally {
+            setIsUploadingJD(false);
+        }
     } else {
         // Handle PDF, DOC, DOCX (Currently not implemented on backend for JD)
         console.warn(`后端目前不支持解析 ${file.type} 类型的 JD 文件。`);
@@ -436,87 +453,188 @@ export default function RecruitmentMatcher() {
           {activeTab === 'results' && (
             <div className="space-y-6">
               {/* 匹配结果展示 */}
-              {matches.length > 0 ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {matches.map((match, index) => {
-                    const matchLevel = getMatchLevel(match.score);
-                    const initials = match.name ? match.name[0].toUpperCase() : 'U';
-                    return (
-                      <div
-                        key={index}
-                        className="bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col h-full p-6 hover:shadow-2xl transition-shadow"
-                      >
-                        {/* 顶部信息区 */}
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600">
-                              {initials}
-                            </div>
-                            <div>
-                              <div className="text-lg font-semibold text-gray-900">{match.name || 'N/A'}</div>
-                              <div className="text-sm text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
-                            </div>
-                          </div>
-                          <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
-                            <span className={`text-xl font-bold ${matchLevel.color}`}>{match.score}%</span>
-                            <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
-                          </div>
-                        </div>
-
-                        {/* 技能区 */}
-                        <div className="mb-4">
-                          <div className="mb-1 text-xs text-gray-500 font-medium">匹配技能</div>
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {match.matchingSkills && match.matchingSkills.length > 0 ? (
-                              match.matchingSkills.map((skill, i) => (
-                                <SkillTag key={i} type="match">{skill}</SkillTag>
-                              ))
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">无</span>
-                            )}
-                          </div>
-                          <div className="mb-1 text-xs text-gray-500 font-medium">缺失技能</div>
-                          <div className="flex flex-wrap gap-2">
-                            {match.missingSkills && match.missingSkills.length > 0 ? (
-                              match.missingSkills.map((skill, i) => (
-                                <SkillTag key={i} type="missing">{skill}</SkillTag>
-                              ))
-                            ) : (
-                              <span className="text-xs text-gray-400 italic">无</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* 联系方式区 */}
-                        <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
-                          {match.email && (
-                            <span className="flex items-center gap-1">
-                              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
-                              {match.email}
-                            </span>
-                          )}
-                          {match.phone && (
-                            <span className="flex items-center gap-1">
-                              <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
-                              {match.phone}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* 操作区 */}
-                        <div className="flex justify-end mt-auto">
-                          <button
-                            onClick={() => handleViewMatchDetail(match)}
-                            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
+              {matches.length > 0 ? (() => {
+                // 按分数降序排序
+                const sortedMatches = [...matches].sort((a, b) => (b.score || 0) - (a.score || 0));
+                const topMatches = sortedMatches.slice(0, 5);
+                const restMatches = sortedMatches.slice(5);
+                return (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {topMatches.map((match, index) => {
+                        const matchLevel = getMatchLevel(match.score);
+                        const initials = match.name ? match.name[0].toUpperCase() : 'U';
+                        return (
+                          <div
+                            key={index}
+                            className="bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col h-full p-6 hover:shadow-2xl transition-shadow"
                           >
-                            查看详情
-                          </button>
-                        </div>
+                            {/* 顶部信息区 */}
+                            <div className="flex items-center justify-between mb-4">
+                              <div className="flex items-center gap-3">
+                                <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600">
+                                  {initials}
+                                </div>
+                                <div>
+                                  <div className="text-lg font-semibold text-gray-900">{match.name || 'N/A'}</div>
+                                  <div className="text-sm text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
+                                </div>
+                              </div>
+                              <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
+                                <span className={`text-xl font-bold ${matchLevel.color}`}>{match.score}%</span>
+                                <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
+                              </div>
+                            </div>
+
+                            {/* 技能区 */}
+                            <div className="mb-4">
+                              <div className="mb-1 text-xs text-gray-500 font-medium">匹配技能</div>
+                              <div className="flex flex-wrap gap-2 mb-2">
+                                {match.matchingSkills && match.matchingSkills.length > 0 ? (
+                                  match.matchingSkills.map((skill, i) => (
+                                    <SkillTag key={i} type="match">{skill}</SkillTag>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">无</span>
+                                )}
+                              </div>
+                              <div className="mb-1 text-xs text-gray-500 font-medium">缺失技能</div>
+                              <div className="flex flex-wrap gap-2">
+                                {match.missingSkills && match.missingSkills.length > 0 ? (
+                                  match.missingSkills.map((skill, i) => (
+                                    <SkillTag key={i} type="missing">{skill}</SkillTag>
+                                  ))
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">无</span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 联系方式区 */}
+                            <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                              {match.email && (
+                                <span className="flex items-center gap-1">
+                                  <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                  {match.email}
+                                </span>
+                              )}
+                              {match.phone && (
+                                <span className="flex items-center gap-1">
+                                  <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                  {match.phone}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* 操作区 */}
+                            <div className="flex justify-end mt-auto">
+                              <button
+                                onClick={() => handleViewMatchDetail(match)}
+                                className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
+                              >
+                                查看详情
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* 查看更多按钮 */}
+                    {!showAllMatches && restMatches.length > 0 && (
+                      <div className="flex justify-center mt-6">
+                        <button
+                          onClick={() => setShowAllMatches(true)}
+                          className="px-6 py-2 bg-blue-50 text-blue-700 rounded-md font-medium border border-blue-200 hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          查看更多（{restMatches.length}）
+                        </button>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
+                    )}
+                    {/* 展开后显示剩余候选人 */}
+                    {showAllMatches && restMatches.length > 0 && (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+                        {restMatches.map((match, index) => {
+                          const matchLevel = getMatchLevel(match.score);
+                          const initials = match.name ? match.name[0].toUpperCase() : 'U';
+                          return (
+                            <div
+                              key={index}
+                              className="bg-white rounded-xl shadow-lg border border-gray-100 flex flex-col h-full p-6 hover:shadow-2xl transition-shadow"
+                            >
+                              {/* 顶部信息区 */}
+                              <div className="flex items-center justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-12 h-12 rounded-full bg-blue-100 flex items-center justify-center text-2xl font-bold text-blue-600">
+                                    {initials}
+                                  </div>
+                                  <div>
+                                    <div className="text-lg font-semibold text-gray-900">{match.name || 'N/A'}</div>
+                                    <div className="text-sm text-gray-500">{match.title || '职位未知'} · {match.totalYearsExperience ? `${match.totalYearsExperience}年经验` : '经验未知'}</div>
+                                  </div>
+                                </div>
+                                <div className={`flex flex-col items-center justify-center w-16 h-16 rounded-full ${matchLevel.bgColor} border-4 ${matchLevel.borderColor} shadow text-center`}>
+                                  <span className={`text-xl font-bold ${matchLevel.color}`}>{match.score}%</span>
+                                  <span className={`text-xs ${matchLevel.color}`}>{matchLevel.text}</span>
+                                </div>
+                              </div>
+
+                              {/* 技能区 */}
+                              <div className="mb-4">
+                                <div className="mb-1 text-xs text-gray-500 font-medium">匹配技能</div>
+                                <div className="flex flex-wrap gap-2 mb-2">
+                                  {match.matchingSkills && match.matchingSkills.length > 0 ? (
+                                    match.matchingSkills.map((skill, i) => (
+                                      <SkillTag key={i} type="match">{skill}</SkillTag>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">无</span>
+                                  )}
+                                </div>
+                                <div className="mb-1 text-xs text-gray-500 font-medium">缺失技能</div>
+                                <div className="flex flex-wrap gap-2">
+                                  {match.missingSkills && match.missingSkills.length > 0 ? (
+                                    match.missingSkills.map((skill, i) => (
+                                      <SkillTag key={i} type="missing">{skill}</SkillTag>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-gray-400 italic">无</span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* 联系方式区 */}
+                              <div className="flex items-center gap-4 text-sm text-gray-500 mb-4">
+                                {match.email && (
+                                  <span className="flex items-center gap-1">
+                                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>
+                                    {match.email}
+                                  </span>
+                                )}
+                                {match.phone && (
+                                  <span className="flex items-center gap-1">
+                                    <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                                    {match.phone}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 操作区 */}
+                              <div className="flex justify-end mt-auto">
+                                <button
+                                  onClick={() => handleViewMatchDetail(match)}
+                                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow"
+                                >
+                                  查看详情
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </>
+                );
+              })() : (
                 <div className="text-center py-12">
                   <p className="text-gray-500">暂无匹配结果</p>
                 </div>
