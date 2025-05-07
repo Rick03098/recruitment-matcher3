@@ -151,12 +151,12 @@ export async function parseJobDescriptionWithOpenAI(jobDescriptionText) {
   `; // 限制 JD 长度
 
   try {
-    console.log(`[parseJobDescriptionWithOpenAI] 调用 OpenAI Chat Completion API 解析 JD (模型: gpt-3.5-turbo-0125)...`);
+    console.log(`[parseJobDescriptionWithOpenAI] 调用 OpenAI Chat Completion API 解析 JD (模型: gpt-4)...`);
     const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125",
+      model: "gpt-4",
       messages: [{ role: "user", content: prompt }],
-      temperature: 0.1,
-      response_format: { type: "json_object" },
+      temperature: 0.3,
+      max_tokens: 1000
     });
 
     const responseContent = completion.choices[0]?.message?.content;
@@ -185,5 +185,31 @@ export async function parseJobDescriptionWithOpenAI(jobDescriptionText) {
         console.error(`OpenAI API Error (${error.status}): ${error.message}`);
     }
     throw new Error(`调用 OpenAI API (JD) 失败: ${error.message}`);
+  }
+}
+
+export async function matchResumeWithJob(resume, jobDescription) {
+  try {
+    const response = await openai.chat.completions.create({
+      model: "gpt-4", // 使用GPT-4模型
+      messages: [
+        {
+          role: "system",
+          content: "你是一个专业的招聘顾问，擅长分析简历与职位描述的匹配度。请分析简历与职位描述的匹配程度，并返回以下信息：\n1. 匹配度分数（0-100）\n2. 匹配的技能列表\n3. 缺失的技能列表\n4. 匹配度分析\n请以JSON格式返回，确保格式如下：\n{\n  \"score\": 85,\n  \"matchingSkills\": [\"技能1\", \"技能2\"],\n  \"missingSkills\": [\"技能1\", \"技能2\"],\n  \"analysis\": \"详细分析\"\n}"
+        },
+        {
+          role: "user",
+          content: `职位描述：${jobDescription}\n\n简历内容：${JSON.stringify(resume)}`
+        }
+      ],
+      temperature: 0.3,
+      max_tokens: 1000
+    });
+
+    const result = response.choices[0].message.content;
+    return JSON.parse(result);
+  } catch (error) {
+    console.error('OpenAI匹配错误:', error);
+    throw new Error('简历匹配失败: ' + error.message);
   }
 }

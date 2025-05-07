@@ -44,14 +44,27 @@ apiRoute.post(async (req, res) => {
     // 根据文件类型处理
     if (file.mimetype === 'application/pdf') {
       try {
+        console.log('开始读取PDF文件:', file.path);
         const dataBuffer = fs.readFileSync(file.path);
-        const pdfData = await pdfParse(dataBuffer);
+        console.log('PDF文件读取成功，开始解析...');
+        
+        const pdfData = await pdfParse(dataBuffer, {
+          max: 0, // 不限制页数
+          version: 'v2.0.550'
+        });
+        
+        if (!pdfData || !pdfData.text) {
+          throw new Error('PDF解析结果为空');
+        }
+        
         extractedText = pdfData.text;
+        console.log('PDF解析成功，提取文本长度:', extractedText.length);
       } catch (pdfError) {
         console.error('PDF解析错误:', pdfError);
         return res.status(400).json({ 
           success: false, 
-          message: 'PDF文件解析失败，请确保文件格式正确且未加密' 
+          message: `PDF文件解析失败: ${pdfError.message}`,
+          details: process.env.NODE_ENV === 'development' ? pdfError.stack : undefined
         });
       }
     } else if (file.mimetype === 'text/plain') {
@@ -74,13 +87,16 @@ apiRoute.post(async (req, res) => {
     // 清理临时文件
     try {
       fs.unlinkSync(file.path);
+      console.log('临时文件已清理:', file.path);
     } catch (unlinkError) {
       console.warn('临时文件清理失败:', unlinkError);
     }
 
     // 使用OpenAI解析文本
     try {
+      console.log('开始使用OpenAI解析文本...');
       structuredData = await parseJobDescriptionWithOpenAI(extractedText);
+      console.log('OpenAI解析完成');
     } catch (openaiError) {
       console.error('OpenAI解析错误:', openaiError);
       // 即使OpenAI解析失败，也返回提取的文本
@@ -88,7 +104,8 @@ apiRoute.post(async (req, res) => {
         success: true,
         message: '文件解析成功，但结构化分析失败',
         text: extractedText,
-        structuredData: null
+        structuredData: null,
+        error: process.env.NODE_ENV === 'development' ? openaiError.message : undefined
       });
     }
 
@@ -109,7 +126,8 @@ apiRoute.post(async (req, res) => {
     console.error('处理文件时发生错误:', error);
     return res.status(500).json({
       success: false,
-      message: '文件处理过程中发生错误: ' + error.message
+      message: '文件处理过程中发生错误: ' + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

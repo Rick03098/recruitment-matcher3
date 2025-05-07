@@ -92,129 +92,107 @@ export default function RecruitmentMatcher() {
   // --- 事件处理函数 ---
 
   // --- UPDATED: Handle JD File Change ---
-  const handleJobFileChange = async (e) => { // Make the handler async
-     const file = e.target.files[0];
-     if (!file) return;
-     setError(null); // Clear previous errors
-     setJobFile(null); // Clear previous file state first
-     setJobDescription(''); // Clear text area when a new file is selected
-     setJobRequirements(null); // Clear previous structured requirements
+  const handleJobFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
 
-     // --- Basic File Validation (Client-Side) ---
-     if (file.size > 10 * 1024 * 1024) { // 10MB limit
-        setError('职位描述文件大小不能超过 10MB');
-        e.target.value = ''; // Reset file input
-        return;
-     }
-
-    const allowedTypes = [
-        'application/pdf',
-        'text/plain',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/png',
-        'image/jpeg',
-        'image/webp',
-        'image/gif', // Added GIF just in case
-    ];
-    if (!allowedTypes.includes(file.type)) {
-        setError('文件仅支持 PDF, TXT, DOC, DOCX, PNG, JPG, WEBP, GIF');
-        e.target.value = ''; // Reset file input
-        return;
+    // 检查文件大小（10MB限制）
+    if (file.size > 10 * 1024 * 1024) {
+      setError('文件大小不能超过10MB');
+      return;
     }
-     // --- Validation End ---
 
-    setJobFile(file); // Set the file state for UI feedback
-    setIsUploadingJD(true); // Set loading state
+    // 检查文件类型
+    const allowedTypes = [
+      'application/pdf',
+      'text/plain',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif'
+    ];
 
-    if (file.type === 'text/plain') {
-        // Read TXT file directly in the browser
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            setJobDescription(event.target.result);
-            console.log(`加载了 TXT 文件 "${file.name}" 的内容。`);
-            setIsUploadingJD(false);
-        };
-        reader.onerror = () => {
-            setError(`读取文件 "${file.name}" 失败`);
-            setIsUploadingJD(false);
-            setJobFile(null); // Clear file on error
-            e.target.value = ''; // Reset input
-        };
-        reader.readAsText(file);
-    } else if (file.type.startsWith('image/')) {
-        // --- Handle Image Upload ---
-        console.log(`准备上传并解析图片文件: ${file.name}`);
-        const formData = new FormData();
-        formData.append('jobFile', file); // Use 'jobFile' as the key expected by the backend API
+    if (!allowedTypes.includes(file.type)) {
+      setError('不支持的文件类型。请上传PDF、Word、TXT或图片文件。');
+      return;
+    }
 
-        try {
-            const response = await fetch('/api/uploadAndParseJD', { // Call the correct API endpoint
-                method: 'POST',
-                body: formData,
-            });
+    setJobFile(file);
+    setError(null);
+    setIsUploadingJD(true);
 
-            const result = await response.json();
+    try {
+      const formData = new FormData();
+      formData.append('jobFile', file);
 
-            if (!response.ok || !result.success) {
-                throw new Error(result.message || `图片处理失败 (状态 ${response.status})`);
-            }
+      let response;
+      if (file.type.startsWith('image/')) {
+        response = await fetch('/api/uploadAndParseJD', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        response = await fetch('/api/parseJDFile', {
+          method: 'POST',
+          body: formData,
+        });
+      }
 
-            console.log("图片处理成功:", result);
-            // Update state with the results
-            if (result.structuredData) {
-                 setJobDescription(result.extractedText || ''); // Put derived/extracted text in text area for review
-                 setJobRequirements(result.structuredData); // Store structured data
-                 console.log("用从图片解析的结构化数据更新了 Job Requirements");
-            } else {
-                 setJobDescription(result.extractedText || '未能从图片中提取文本'); // Fallback to extracted text
-                 setJobRequirements(null); // No structured data available
-                 console.log("用从图片提取的纯文本更新了 Job Description");
-            }
-            // Optionally show a success message to the user here
+      const data = await response.json();
 
-        } catch (err) {
-            console.error("处理图片文件时出错:", err);
-            setError(`处理图片失败: ${err.message}`); // Set the general error state
-            setJobFile(null); // Clear file on error
-            e.target.value = ''; // Reset input
-        } finally {
-            setIsUploadingJD(false); // Reset loading state
+      if (!response.ok) {
+        throw new Error(data.message || '文件处理失败');
+      }
+
+      if (!data.success) {
+        throw new Error(data.message || '文件处理失败');
+      }
+
+      // 更新职位描述
+      setJobDescription(data.text || '');
+      
+      // 如果有结构化数据，更新相关字段
+      if (data.structuredData) {
+        const { jobTitle, requiredSkills, preferredSkills, yearsOfExperience, educationLevel } = data.structuredData;
+        
+        // 更新职位标题
+        if (jobTitle) {
+          setJobRequirements(data.structuredData);
         }
-        // --- Image Handling End ---
-    } else if (file.type === 'application/pdf') {
-        // 新增PDF自动提取
-        const formData = new FormData();
-        formData.append('jobFile', file);
-        try {
-            const response = await fetch('/api/parseJDFile', {
-                method: 'POST',
-                body: formData,
-            });
-            let result = {};
-            try {
-                result = await response.json();
-            } catch (jsonErr) {
-                throw new Error('PDF解析接口返回异常，无法解析JSON');
-            }
-            if (!response.ok || !result.success) {
-                throw new Error(result.message || `PDF解析失败 (状态 ${response.status})`);
-            }
-            setJobDescription(result.text || '');
-        } catch (err) {
-            setError(`PDF解析失败: ${err.message}`);
-            setJobFile(null);
-            e.target.value = '';
-        } finally {
-            setIsUploadingJD(false);
+        
+        // 更新技能要求
+        if (requiredSkills && requiredSkills.length > 0) {
+          setJobRequirements(data.structuredData);
         }
-    } else {
-        // Handle PDF, DOC, DOCX (Currently not implemented on backend for JD)
-        console.warn(`后端目前不支持解析 ${file.type} 类型的 JD 文件。`);
-        // Provide feedback, but don't set an error that prevents manual input
-        setJobDescription(`(文件 "${file.name}" 已选择。请手动粘贴内容或实现 ${file.type} 的后端解析)`);
-        setIsUploadingJD(false); // Stop loading indicator for these types
-        // Optionally set a *different* kind of non-blocking message if needed
+        
+        // 更新优先技能
+        if (preferredSkills && preferredSkills.length > 0) {
+          setJobRequirements(data.structuredData);
+        }
+        
+        // 更新工作经验
+        if (yearsOfExperience) {
+          setJobRequirements(data.structuredData);
+        }
+        
+        // 更新教育程度
+        if (educationLevel) {
+          setJobRequirements(data.structuredData);
+        }
+      }
+
+      // 显示成功消息
+      setUploadResumeSuccess('文件上传并解析成功');
+      setTimeout(() => setUploadResumeSuccess(null), 3000);
+
+    } catch (error) {
+      console.error('文件处理错误:', error);
+      setError(error.message || '文件处理失败，请重试');
+      setJobFile(null);
+    } finally {
+      setIsUploadingJD(false);
     }
   };
 
