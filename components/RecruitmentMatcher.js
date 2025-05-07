@@ -224,10 +224,6 @@ export default function RecruitmentMatcher() {
     setIsMatching(true);
     setError(null);
     setMatches([]);
-    // We might already have jobRequirements from image upload, but the matching API
-    // often re-parses the jobDescription text for consistency.
-    // Let the /api/match endpoint handle JD parsing based on the text.
-    // setJobRequirements(null); // Optionally clear here or let API response overwrite
     setShowAllMatches(false);
 
     console.log("RecruitmentMatcher: 开始匹配...");
@@ -235,21 +231,24 @@ export default function RecruitmentMatcher() {
       const response = await fetch('/api/match', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ jobDescription, resumes }), // Send current text JD and resumes
+        body: JSON.stringify({ jobDescription, resumes }),
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || data.message || `匹配请求失败 (状态 ${response.status})`);
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        throw new Error('服务器返回了非预期格式（可能超时或出错），请稍后重试或联系管理员');
+      }
+      if (!response.ok) throw new Error(data?.error || data?.message || `匹配请求失败 (状态 ${response.status})`);
 
       console.log("RecruitmentMatcher: 匹配成功，结果:", data);
       setMatches(data.matches || []);
-      // Update jobRequirements based on the matching API's parsing,
-      // this ensures consistency if the text was edited after image upload.
       setJobRequirements(data.jobRequirements || null);
-      setActiveTab('results'); // Switch to results
+      setActiveTab('results');
     } catch (error) {
       console.error('RecruitmentMatcher: 匹配过程出错:', error);
-      setError('匹配过程出错: ' + error.message); // Set general error
-      setActiveTab('upload'); // Stay on upload tab on error
+      setError('匹配过程出错: ' + error.message);
+      setActiveTab('upload');
     } finally {
       setIsMatching(false);
     }
