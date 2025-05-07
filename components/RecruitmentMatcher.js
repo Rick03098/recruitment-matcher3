@@ -400,6 +400,20 @@ export default function RecruitmentMatcher() {
                   placeholder="在此输入或粘贴职位描述..."
                 />
               </div>
+
+              {/* 开始匹配按钮 */}
+              <div className="flex justify-end">
+                <button
+                  onClick={matchResumes}
+                  disabled={!jobDescription.trim() || resumes.length === 0 || isMatching}
+                  className={`inline-flex items-center px-6 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors
+                    ${(!jobDescription.trim() || resumes.length === 0 || isMatching)
+                      ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                      : 'bg-blue-600 text-white hover:bg-blue-700'}`}
+                >
+                  {isMatching ? '匹配中...' : '开始匹配'}
+                </button>
+              </div>
             </div>
           )}
 
