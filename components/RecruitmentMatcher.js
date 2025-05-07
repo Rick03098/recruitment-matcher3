@@ -191,7 +191,12 @@ export default function RecruitmentMatcher() {
                 method: 'POST',
                 body: formData,
             });
-            const result = await response.json();
+            let result = {};
+            try {
+                result = await response.json();
+            } catch (jsonErr) {
+                throw new Error('PDF解析接口返回异常，无法解析JSON');
+            }
             if (!response.ok || !result.success) {
                 throw new Error(result.message || `PDF解析失败 (状态 ${response.status})`);
             }

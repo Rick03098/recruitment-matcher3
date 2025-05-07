@@ -18,6 +18,9 @@ apiRoute.use(upload.single('jobFile'));
 
 apiRoute.post(async (req, res) => {
   try {
+    if (!req.file || req.file.mimetype !== 'application/pdf') {
+      return res.status(400).json({ success: false, message: '仅支持PDF文件' });
+    }
     const filePath = req.file.path;
     const dataBuffer = fs.readFileSync(filePath);
     const data = await pdfParse(dataBuffer);
